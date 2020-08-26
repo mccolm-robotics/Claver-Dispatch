@@ -16,8 +16,9 @@ class ClaverDispatch:
             ssl_context = None
 
         self.event_loop = asyncio.get_event_loop()
-        self.clientManager = UserManager(self.event_loop)
-        self.router = Router(self.clientManager, self.event_loop)
+        # self.event_loop.set_debug(True)     # Turn on debug mode
+        self.userManager = UserManager(self.event_loop)
+        self.router = Router(self.userManager, self.event_loop)
         self.start_server = websockets.serve(self.connection_handler, host, port, ssl=ssl_context) # Creates the server
         self.run()
 
@@ -37,15 +38,9 @@ class ClaverDispatch:
 
     async def incoming_events_handler(self, websocket: websockets, path: str) -> None:
         try:
-            await self.router.ingest_events(websocket, path)
+            await self.router.ingest_events(websocket)
         except websockets.ConnectionClosed:
-            print("Incoming Event -> Stalled: Client Disconnected")
-
-    async def outgoing_events_handler(self, websocket: websockets, path: str) -> None:
-        try:
-            await self.router.transmit_events(websocket, path)
-        except websockets.ConnectionClosed:
-            print("Outgoing Event -> Stalled: Client Disconnected")
+            print("Stalled: Client Disconnected")
 
     async def update_node_map(self) -> None:
         await self.router.broadcast_connected_users_list()
@@ -56,25 +51,18 @@ class ClaverDispatch:
         This function executes the application logic for a single connection and closes the connection when done.
         Function parameters: it receives a WebSocket protocol instance and the URI path
         """
-        # Add websocket to list of connected clients
-        if self.clientManager.authenticate(websocket):
+        if self.userManager.authenticate(websocket):
             await self.update_node_map()
             try:
                 await self.router.initialize_client_state(websocket, path)
-                incoming_event = asyncio.create_task(self.incoming_events_handler(websocket, path))
-                outgoing_event = asyncio.create_task(self.outgoing_events_handler(websocket, path))
-                done, pending = await asyncio.wait(
-                    [incoming_event, outgoing_event],
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-                for task in pending:
-                    task.cancel()
+                async for message in websocket:
+                    await self.router.ingest_events(message)
             except websockets.ConnectionClosed:
                 # Exception raised when websockets.open() == False
                 # Connection is closed. Exit iterator.
                 pass
             finally:
-                self.clientManager.detach_client(websocket)
+                self.userManager.detach_client(websocket)
                 await self.update_node_map()
 
 if __name__ == "__main__":
@@ -87,6 +75,8 @@ if __name__ == "__main__":
 
 
 """
+Overview: https://www.aeracode.org/2018/02/19/python-async-simplified/
+
 Resources: SSL Self-Signed Certificates
 
 https://www.ibm.com/support/knowledgecenter/SSMNED_5.0.0/com.ibm.apic.cmc.doc/task_apionprem_gernerate_self_signed_openSSL.html
@@ -101,5 +91,25 @@ https://docs.python.org/3/library/ssl.html#module-ssl
 
 Resources: WebSockets
 
+https://websockets.readthedocs.io/en/stable/intro.html
 https://websockets.readthedocs.io/en/stable/cheatsheet.html?highlight=handler#passing-additional-arguments-to-the-connection-handler
+https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API/Writing_WebSocket_servers
+
+
+Resources: Sockets
+https://realpython.com/python-sockets/
+
+
+Resources: RabbitMQ
+https://www.youtube.com/watch?v=XjuiZM7JzPw
+
+Resources: Kafka
+https://switchcaseblog.wordpress.com/2017/01/20/how-to-get-php-and-kafka-to-play-nicely-and-not-do-it-slowly/
+https://www.alberton.info/kafka_07_php_client_library.html
+https://demyanov.dev/using-php-apache-kafka
+
+Resources: Systemd services
+https://unix.stackexchange.com/questions/166473/debian-how-to-run-a-script-on-startup-as-soon-as-there-is-an-internet-connecti/401080#401080
+https://stackoverflow.com/questions/13069634/python-daemon-and-systemd-service
+https://www.xarg.org/2016/07/how-to-write-a-php-daemon/
 """

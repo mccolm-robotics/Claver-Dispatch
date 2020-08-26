@@ -1,38 +1,44 @@
 import asyncio
+import uuid
 
 import aio_pika
-from aio_pika import connect, Message, connect_robust
+from aio_pika import connect, Message, ExchangeType, DeliveryMode
 
 class MQConnection:
     def __init__(self, loop):
         self.amqp_url = 'amqp://guest:guest@localhost/'
         self.loop = loop
 
+    def fake_header(self):
+
+        return {
+            # Information about the sender
+            "client": {"UUID": "d977e2ac-1458-4b23-948f-29fa458bcb21", "user-agent": "rpi-4", "session": "242e3704bcfe215adedad3c0508d0a8f979c3e1c3fbde62cedcab888f723bf4e"},
+            # Information about how to configure client connection on server
+            "config": {"stream": "draw"},
+            # Example of message to be sent as body
+            "message": {
+                "type": "stroke",
+                "brush": "20:black",
+                "path": "32:67|38:70|"
+            }
+        }
+
     async def publish_message(self, message: str) -> None:
         connection = await connect(self.amqp_url, loop=self.loop)
 
-        queue_name = "global"
-        routing_key = "global"
+        routing_key = "events"
 
         # Creating channel
         channel = await connection.channel()
 
-        # Declaring exchange
-        exchange = await channel.declare_exchange("claver", auto_delete=False, durable=True)
+        events_exchange = await channel.declare_exchange("claver-events", ExchangeType.FANOUT, auto_delete=False, durable=True)
 
-        # Declaring queue
-        queue = await channel.declare_queue(queue_name, auto_delete=False)
+        message_body = Message(bytes(message, "utf-8"), content_type="text/plain", headers=self.fake_header(), delivery_mode=DeliveryMode.PERSISTENT)
 
-        # Binding queue
-        await queue.bind(exchange, routing_key)
-
-        await exchange.publish(
-            Message(
-                bytes(message, "utf-8"),
-                content_type="text/plain",
-                headers={"foo": "bar"},
-            ),
-            routing_key,
+        await events_exchange.publish(
+            message_body,
+            routing_key=routing_key,
         )
 
         await connection.close()

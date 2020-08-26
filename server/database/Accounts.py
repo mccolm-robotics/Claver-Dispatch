@@ -1,5 +1,7 @@
 from server.database.DBConnection import DBConnection
 
+# https://stackoverflow.com/questions/283645/python-list-in-sql-query-as-parameter?noredirect=1&lq=1
+
 class Accounts:
     def __init__(self):
         self.db_connection = DBConnection()

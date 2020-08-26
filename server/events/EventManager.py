@@ -19,11 +19,9 @@ class EventManager:
     def decode_event(self, data: str) -> Tuple[str, int]:
         if data["action"] == "minus":
             self.STATE["value"] -= 1
-            # await self.__broadcast_message(self.state_event())
             return self.state_event(), -1
         elif data["action"] == "plus":
             self.STATE["value"] += 1
-            # await self.__broadcast_message(self.state_event())
             return self.state_event(), -1
         else:
             logging.error("Unsupported event: {}", data)

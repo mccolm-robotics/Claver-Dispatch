@@ -19,7 +19,7 @@ class UserManager:
 
     def attach_client(self, connection: websockets):
         self.connected_clients.add(connection)
-        self.client_dict[connection] = User(self.event_loop)
+        self.client_dict[connection] = User(self.event_loop, connection)
 
     def detach_client(self, connection: websockets):
         self.connected_clients.remove(connection)
