@@ -9,6 +9,7 @@ class ClaverClient:
             self.ssl_context.load_cert_chain(certfile="client.crt", keyfile="client.key")
         self.uri = "ws://localhost:6789"
         self.secret_key = "2fa9acf0a0fa4960834dccdb7053f8b5"
+        self.serial_num = "000000003d1d1c36"
         self.run()
 
     async def connection_handler(self):

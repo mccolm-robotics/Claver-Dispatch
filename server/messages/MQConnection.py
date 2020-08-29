@@ -16,12 +16,6 @@ class MQConnection:
             "client": {"UUID": "d977e2ac-1458-4b23-948f-29fa458bcb21", "user-agent": "rpi-4", "session": "242e3704bcfe215adedad3c0508d0a8f979c3e1c3fbde62cedcab888f723bf4e"},
             # Information about how to configure client connection on server
             "config": {"stream": "draw"},
-            # Example of message to be sent as body
-            "message": {
-                "type": "stroke",
-                "brush": "20:black",
-                "path": "32:67|38:70|"
-            }
         }
 
     async def publish_message(self, message: str) -> None:

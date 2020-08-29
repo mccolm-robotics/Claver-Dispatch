@@ -34,7 +34,7 @@ class ClaverDispatch:
             server.close()
             self.event_loop.run_until_complete(server.wait_closed())
             print('Server: Disconnected')
-            self.event_loop.close()
+            self.event_loop.stop()  # Changing loop.close() to loop.stop() prevents an exception when there are still running tasks.
 
     async def incoming_events_handler(self, websocket: websockets, path: str) -> None:
         try:
@@ -42,8 +42,8 @@ class ClaverDispatch:
         except websockets.ConnectionClosed:
             print("Stalled: Client Disconnected")
 
-    async def update_node_map(self) -> None:
-        await self.router.broadcast_connected_users_list()
+    # async def update_node_map(self) -> None:
+    #     await self.router.broadcast_connected_users_list()
 
     async def connection_handler(self, websocket: websockets, path: str) -> None:
         """
@@ -51,19 +51,23 @@ class ClaverDispatch:
         This function executes the application logic for a single connection and closes the connection when done.
         Function parameters: it receives a WebSocket protocol instance and the URI path
         """
-        if self.userManager.authenticate(websocket):
-            await self.update_node_map()
-            try:
-                await self.router.initialize_client_state(websocket, path)
-                async for message in websocket:
+
+        try:
+            async for message in websocket:
+                if self.userManager.authorized_user(websocket):
                     await self.router.ingest_events(message)
-            except websockets.ConnectionClosed:
-                # Exception raised when websockets.open() == False
-                # Connection is closed. Exit iterator.
-                pass
-            finally:
-                self.userManager.detach_client(websocket)
-                await self.update_node_map()
+                else:
+                    await self.router.authenticate_client(websocket, message)
+        except websockets.ConnectionClosed:
+            # Exception raised when websockets.open() == False
+            # Connection is closed. Exit iterator.
+            pass
+        finally:
+            if self.userManager.isClientAttached(websocket):
+                await self.userManager.detach_client(websocket)
+                await self.router.broadcast_connected_users_list()
+            else:
+                await websocket.close()
 
 if __name__ == "__main__":
     ClaverDispatch("localhost", 6789)
@@ -94,6 +98,8 @@ Resources: WebSockets
 https://websockets.readthedocs.io/en/stable/intro.html
 https://websockets.readthedocs.io/en/stable/cheatsheet.html?highlight=handler#passing-additional-arguments-to-the-connection-handler
 https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API/Writing_WebSocket_servers
+https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent#Status_codes
+https://stackoverflow.com/questions/45675148/why-are-websockets-connections-constantly-closed-upon-browser-reload
 
 
 Resources: Sockets

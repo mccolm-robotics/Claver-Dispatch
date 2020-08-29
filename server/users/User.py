@@ -17,6 +17,7 @@ class User:
         self.uuid = uuid.uuid4()
         account = Accounts()         # Connect to MySQL and get user's ID#
         self.id, self.password = account.get_account("tester")
+        self.secret_key = "2fa9acf0a0fa4960834dccdb7053f8b5"
 
         self.amqp_url = "amqp://guest:guest@localhost/"
         event_loop.create_task(self.notifications(self.on_message))
@@ -30,8 +31,6 @@ class User:
             for header in message.headers:
                 content = json.loads(message.headers[header])
                 print(f"{header}: {content}")
-                if "dst_ip" in content:
-                    print(f"IP: {content['dst_ip']}")
 
             try:
                 await self.websocket.send(message.body.decode())
@@ -39,13 +38,9 @@ class User:
                 await self.close()
                 await asyncio.gather(*asyncio.all_tasks())
 
-    async def on_cancel(self):
-        print("connection cancelled")
-
     async def notifications(self, callback):
         # Perform connection
         self.connection = await connect(self.amqp_url, loop=self.event_loop)
-        self.connection.add_close_callback(self.on_cancel)
 
         # Creating a channel
         channel = await self.connection.channel()
@@ -63,8 +58,6 @@ class User:
         self.tag = await self.queue.consume(callback)
 
     async def close(self):
-        await self.queue.cancel(self.tag)
         await self.queue.unbind(self.events_exchange)
         # await self.queue.delete()
         await self.connection.close()
-        await asyncio.gather(*asyncio.all_tasks())
