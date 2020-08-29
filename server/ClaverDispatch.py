@@ -1,9 +1,11 @@
 import asyncio
 import ssl
 import websockets
-from server.users.UserManager import UserManager
+from server.connections.ConnectionManager import ConnectionManager
 from server.messages.Router import Router
 
+class BadCredentials(Exception):
+    pass
 
 class ClaverDispatch:
     def __init__(self, host: str, port: int, server_key: str=None, server_crt: str=None, client_crt: str=None) -> None:
@@ -17,7 +19,7 @@ class ClaverDispatch:
 
         self.event_loop = asyncio.get_event_loop()
         # self.event_loop.set_debug(True)     # Turn on debug mode
-        self.userManager = UserManager(self.event_loop)
+        self.userManager = ConnectionManager(self.event_loop)
         self.router = Router(self.userManager, self.event_loop)
         self.start_server = websockets.serve(self.connection_handler, host, port, ssl=ssl_context) # Creates the server
         self.run()
@@ -57,10 +59,15 @@ class ClaverDispatch:
                 if self.userManager.authorized_user(websocket):
                     await self.router.ingest_events(message)
                 else:
-                    await self.router.authenticate_client(websocket, message)
+                    if not await self.router.authenticate_client(websocket, message):
+                        raise BadCredentials
         except websockets.ConnectionClosed:
             # Exception raised when websockets.open() == False
             # Connection is closed. Exit iterator.
+            pass
+        except BadCredentials:
+            # Bad username or password. Close the websocket and don't send response
+            print("Bad Credentials")
             pass
         finally:
             if self.userManager.isClientAttached(websocket):
@@ -71,9 +78,6 @@ class ClaverDispatch:
 
 if __name__ == "__main__":
     ClaverDispatch("localhost", 6789)
-
-
-
 
 
 

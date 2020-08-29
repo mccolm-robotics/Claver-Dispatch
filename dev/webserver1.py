@@ -17,7 +17,7 @@ def state_event():
     return json.dumps({"type": "state", **STATE})
 
 def users_event():
-    return json.dumps({"type": "users", "count": len(USERS)})
+    return json.dumps({"type": "connections", "count": len(USERS)})
 
 async def notify_state():
     if USERS:  # asyncio.wait doesn't accept an empty list
