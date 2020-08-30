@@ -22,13 +22,11 @@ class Router:
 
     async def ingest_events(self, message) -> None:
         data = json.loads(message)
-        event, target = self.eventManager.decode_event(data)
-        if target == -1:
-            # await self.__broadcast_to_all_message(event) # Direct Synchronous message transfer
-            await self.messageQueue.publish_message(event)
-        else:
-            # await self.__broadcast_to_all_message(event) # Direct Synchronous message transfer
-            await self.messageQueue.publish_message(event)
+        response = self.eventManager.decode_event(data)
+        if not response["error"]:
+            if response["target"] == "all":
+                # await self.__broadcast_to_all_message(event) # Direct Synchronous message transfer
+                await self.messageQueue.publish_message(response["event"])
 
     async def initialize_client_state(self, websocket: websockets) -> None:
         """Sets the initial state of the application client"""

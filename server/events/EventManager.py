@@ -16,15 +16,24 @@ class EventManager:
     def users_event(self) -> str:
         return json.dumps({"type": "users", "count": self.connectionManager.get_client_count()})
 
-    def decode_event(self, data: str) -> Tuple[str, int]:
-        if data["action"] == "minus":
-            self.STATE["value"] -= 1
-            return self.state_event(), -1
-        elif data["action"] == "plus":
-            self.STATE["value"] += 1
-            return self.state_event(), -1
+    def decode_event(self, data: str) -> dict:
+        response = {}
+        response["error"] = False
+        response["target"] = "all"
+        if "action" in data:
+            if data["action"] == "minus":
+                self.STATE["value"] -= 1
+                response["event"] = self.state_event()
+                return response
+            elif data["action"] == "plus":
+                self.STATE["value"] += 1
+                response["event"] = self.state_event()
+                return response
+            else:
+                logging.error("Unsupported event: {}", data)
         else:
-            logging.error("Unsupported event: {}", data)
+            response["error"] = True
+            return response
 
     def get_state(self):
         return self.state_event()

@@ -16,5 +16,8 @@ class DBConnection:
     def get_prepared_cursor(self):
         return self.connection.cursor(prepared=True)
 
+    def commit(self):
+        self.connection.commit()
+
     def __del__(self):
         self.connection.close()
