@@ -19,8 +19,8 @@ class ClaverDispatch:
 
         self.event_loop = asyncio.get_event_loop()
         # self.event_loop.set_debug(True)     # Turn on debug mode
-        self.userManager = ConnectionManager(self.event_loop)
-        self.router = Router(self.userManager, self.event_loop)
+        self.connectionManager = ConnectionManager(self.event_loop)
+        self.router = Router(self.connectionManager, self.event_loop)
         self.start_server = websockets.serve(self.connection_handler, host, port, ssl=ssl_context) # Creates the server
         self.run()
 
@@ -55,8 +55,9 @@ class ClaverDispatch:
         """
 
         try:
+            print("Client Connected:")
             async for message in websocket:
-                if self.userManager.authorized_user(websocket):
+                if self.connectionManager.authorized_user(websocket):
                     await self.router.ingest_events(message)
                 else:
                     if not await self.router.authenticate_client(websocket, message):
@@ -67,14 +68,15 @@ class ClaverDispatch:
             pass
         except BadCredentials:
             # Bad username or password. Close the websocket and don't send response
-            print("Bad Credentials")
+            print("\tBad Credentials")
             pass
         finally:
-            if self.userManager.isClientAttached(websocket):
-                await self.userManager.detach_client(websocket)
+            if self.connectionManager.isClientAttached(websocket):
+                await self.connectionManager.detach_client(websocket)
                 await self.router.broadcast_connected_users_list()
             else:
                 await websocket.close()
+            print("Client Disconnected")
 
 if __name__ == "__main__":
     ClaverDispatch("localhost", 6789)

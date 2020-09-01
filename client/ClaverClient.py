@@ -45,7 +45,7 @@ class ClaverClient:
         serial_num = self.getDeviceID()
 
         token = pyotp.TOTP(secret_key)
-        credentials = json.dumps({"agent": "node", "nid": serial_num, "token": token.now(), "qdot": public_key})
+        credentials = json.dumps({"agent": "node", "nid": serial_num, "token": token.now(), "qdot": public_key, "mode": "WhiteBoard"})
 
         await websocket.send(credentials)
         response = await websocket.recv()

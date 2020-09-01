@@ -1,6 +1,5 @@
 import asyncio
 import json
-import websockets
 from server.connections.ConnectionManager import ConnectionManager
 from server.events.EventManager import EventManager
 from server.messages.MQConnection import MQConnection
@@ -13,9 +12,9 @@ class Router:
         self.messageQueue = MQConnection(eventLoop)
 
     async def broadcast_connected_users_list(self) -> None:
-        await self.__broadcast_to_all_message(self.eventManager.users_event())
+        await self.__broadcast_to_all_message(json.dumps(self.eventManager.shim_users()))
 
-    async def __broadcast_to_all_message(self, message):
+    async def __broadcast_to_all_message(self, message: str) -> None:
         connected_clients = self.connectionManager.get_connected_clients()
         if connected_clients:  # asyncio.wait doesn't accept an empty list
             await asyncio.wait([user.send(message) for user in connected_clients])
@@ -26,16 +25,17 @@ class Router:
         if not response["error"]:
             if response["target"] == "all":
                 # await self.__broadcast_to_all_message(event) # Direct Synchronous message transfer
-                await self.messageQueue.publish_message(response["event"])
-
-    async def initialize_client_state(self, websocket: websockets) -> None:
-        """Sets the initial state of the application client"""
-        # Initialize client with current state of the app
-        await websocket.send(self.eventManager.get_state())
+                await self.messageQueue.publish_message(json.dumps(response["event"]))
+        else:
+            print(response["error"])
 
     async def authenticate_client(self, websocket, message):
-        if await self.connectionManager.authenticate_user(websocket, message):
-            await self.initialize_client_state(websocket)
-            await self.broadcast_connected_users_list()
-            return True
+        data = json.loads(message)
+        if await self.connectionManager.authenticate_user(websocket, data):
+            if "mode" in data:
+                await websocket.send(json.dumps(self.eventManager.get_mode_state(data["mode"])))
+                await self.broadcast_connected_users_list()
+                return True
+            else:
+                print("\tError: Client did not set initial mode")
         return False

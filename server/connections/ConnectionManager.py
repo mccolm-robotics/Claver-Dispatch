@@ -48,11 +48,10 @@ class ConnectionManager:
     def get_connected_clients(self):
         return self.connected_clients
 
-    async def authenticate_user(self, websocket, message):
-        data = json.loads(message)
+    async def authenticate_user(self, websocket: websockets, data: dict) -> bool:
         if "agent" in data:
             if data["agent"] == "browser":
-                # print("browser")
+                print("\tType: Browser")
                 if "bid" in data and "token" in data:
                     # ToDo: Check length and use regex to confirm valid characters for bid
                     session_data = self.connection_db.get_browser_session_data(data["bid"])
@@ -63,8 +62,11 @@ class ConnectionManager:
                         # print("Browser connected")
                         # ToDo: make sure OTP is valid
                         if data["token"] == "958058":
+                            print("\tToken: Valid")
                             self.attach_browser(websocket, session_data)
                             return True
+                        else:
+                             print("\tToken: Rejected")
             elif data["agent"] == "node":
                 if "token" in data and "nid" in data and "qdot" in data:
                     # secret_key = pyotp.random_base32(32)

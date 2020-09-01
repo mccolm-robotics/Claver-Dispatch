@@ -17,7 +17,7 @@ class User:
         self.uuid = uuid.uuid4()
         account = Accounts()         # Connect to MySQL and get user's ID#
         self.id, self.password = account.get_account("tester")
-        self.secret_key = "2fa9acf0a0fa4960834dccdb7053f8b5"
+        self.connection = None
 
         self.amqp_url = "amqp://guest:guest@localhost/"
         event_loop.create_task(self.notifications(self.on_message))
@@ -58,6 +58,12 @@ class User:
         self.tag = await self.queue.consume(callback)
 
     async def close(self):
-        await self.queue.unbind(self.events_exchange)
+        while True:
+            if self.connection is None:
+                await asyncio.sleep(1)
+            else:
+                break
+        # await self.queue.unbind(self.events_exchange)
         # await self.queue.delete()
         await self.connection.close()
+        print("\tClosed Connection to Rabbit")

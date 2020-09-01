@@ -56,15 +56,15 @@
                 websocket = new WebSocket("ws://127.0.0.1:6789");
 
             minus.onclick = function (event) {
-                websocket.send(JSON.stringify({action: 'minus'}));
+                websocket.send(JSON.stringify({mode: 'WhiteBoard', action: 'minus'}));
             }
 
             plus.onclick = function (event) {
-                websocket.send(JSON.stringify({action: 'plus'}));
+                websocket.send(JSON.stringify({mode: 'WhiteBoard', action: 'plus'}));
             }
 
             websocket.onopen = function (e){
-                websocket.send(JSON.stringify({agent: 'browser', bid: 'cb6070bf-e9aa-11ea-97ab-7085c2d6de41', token: '958058'}));
+                websocket.send(JSON.stringify({agent: 'browser', bid: 'cb6070bf-e9aa-11ea-97ab-7085c2d6de41', token: '958058', mode: 'WhiteBoard'}));
             }
 
             websocket.onmessage = function (event) {

@@ -1,39 +1,30 @@
-import json
-import logging
-from typing import Tuple
-logging.basicConfig()
+from server.events.WhiteBoard import WhiteBoard
 from server.connections.ConnectionManager import ConnectionManager
 
-class EventManager:
-    STATE = {"value": 0}
 
+class EventManager:
     def __init__(self, connectionManager: ConnectionManager):
         self.connectionManager = connectionManager
+        self.white_board = WhiteBoard(connectionManager)
 
-    def state_event(self) -> str:
-        return json.dumps({"type": "state", **self.STATE})
-
-    def users_event(self) -> str:
-        return json.dumps({"type": "users", "count": self.connectionManager.get_client_count()})
-
-    def decode_event(self, data: str) -> dict:
+    def decode_event(self, data: dict) -> dict:
         response = {}
-        response["error"] = False
+        response["error"] = ""
         response["target"] = "all"
-        if "action" in data:
-            if data["action"] == "minus":
-                self.STATE["value"] -= 1
-                response["event"] = self.state_event()
-                return response
-            elif data["action"] == "plus":
-                self.STATE["value"] += 1
-                response["event"] = self.state_event()
-                return response
-            else:
-                logging.error("Unsupported event: {}", data)
-        else:
-            response["error"] = True
-            return response
+        response["event"] = ""
 
-    def get_state(self):
-        return self.state_event()
+        if "mode" in data:
+            if data["mode"] == "WhiteBoard":
+                self.white_board.process_event(data, response)
+        else:
+            response["error"] = "EventManager: Bad Event"
+        return response
+
+    def get_mode_state(self, mode) -> dict:
+        if mode == "WhiteBoard":
+            return self.white_board.get_state()
+        return {}
+
+    def shim_users(self):
+        return self.white_board.get_users()
+

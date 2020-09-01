@@ -18,6 +18,7 @@ class Browser:
         self.id = session_data["id"]    # Session ID in MySQL sessions table
         self.user_id = session_data["user_id"]      # User id of user who requested the connection
         self.created_timestamp = session_data["created"]    # Timestamp when the browser session was created
+        self.connection = None
 
         self.amqp_url = "amqp://guest:guest@localhost/"
         event_loop.create_task(self.notifications(self.on_message))
@@ -31,6 +32,7 @@ class Browser:
             try:
                 await self.websocket.send(message.body.decode())
             except websockets.ConnectionClosed:
+                await self.queue.delete()
                 await self.close()
                 await asyncio.gather(*asyncio.all_tasks())
 
@@ -50,14 +52,16 @@ class Browser:
 
         await self.queue.bind(self.events_exchange)
 
-        # Start listening the queue (auto generated name)
+        # Start listening to the queue (auto generated name)
         self.tag = await self.queue.consume(callback)
 
     async def close(self):
-        await self.queue.unbind(self.events_exchange)
+        while True:
+            if self.connection is None:
+                await asyncio.sleep(1)
+            else:
+                break
+        # await self.queue.unbind(self.events_exchange)
         # await self.queue.delete()
         await self.connection.close()
-
-    def __del__(self):
-        # ToDo delete session from MySQL table
-        pass
+        print("\tClosed Connection to Rabbit")
