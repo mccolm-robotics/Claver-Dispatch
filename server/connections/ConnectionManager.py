@@ -18,9 +18,6 @@ class ConnectionManager:
         # self.db_sessions = Sessions()
         self.connection_db = ConnectionDB()
 
-    def get_notification(self, websocket: websockets):
-        return self.client_dict[websocket].get_notification()
-
     def authorized_user(self, websocket):
         return websocket in self.connected_clients
 

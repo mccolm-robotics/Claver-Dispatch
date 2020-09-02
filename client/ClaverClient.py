@@ -15,34 +15,34 @@ class ClaverClient:
         self.uri = "ws://localhost:6789"
         self.run()
 
-    def getSecretKey(self):
+    def __getSecretKey(self):
         with open(self.dir_path + "/secret_inSecureStorage.txt", "r") as file:
             for line in file:
                 secret_key = line.strip()
         return secret_key
 
-    def saveSecretKey(self, key):
+    def __saveSecretKey(self, key):
         with open(self.dir_path + "/secret_inSecureStorage.txt", "w") as file:
             file.write(key)
 
-    def getPublicKey(self):
+    def __getPublicKey(self):
         with open(self.dir_path + "/public_inSecureStorage.txt", "r") as file:
             for line in file:
                 public_key = line.strip()
         return public_key
 
-    def savePublicKey(self, key):
+    def __savePublicKey(self, key):
         with open(self.dir_path + "/public_inSecureStorage.txt", "w") as file:
             file.write(key)
 
-    def getDeviceID(self):
+    def __getDeviceID(self):
         # ToDo: Add logic for obtaining device id or serial
         return "000000003d1d1c36"
 
-    async def authenticate_connection(self, websocket: websockets) -> bool:
-        secret_key = self.getSecretKey()
-        public_key = self.getPublicKey()
-        serial_num = self.getDeviceID()
+    async def __authenticate_connection(self, websocket: websockets) -> bool:
+        secret_key = self.__getSecretKey()
+        public_key = self.__getPublicKey()
+        serial_num = self.__getDeviceID()
 
         token = pyotp.TOTP(secret_key)
         credentials = json.dumps({"agent": "node", "nid": serial_num, "token": token.now(), "qdot": public_key, "mode": "WhiteBoard"})
@@ -52,18 +52,18 @@ class ClaverClient:
         data = json.loads(response)
         # Check to see if new public key returned in response
         if "qdot" in data:
-            self.savePublicKey(data["qdot"])
+            self.__savePublicKey(data["qdot"])
             print(f"Received: {data['qdot']}")
             return True
         return False
 
-    async def connection_handler(self):
+    async def __connection_handler(self):
         authenticated = False
         async with websockets.connect(self.uri) as websocket:
             while True:
                 try:
                     if not authenticated:
-                        authenticated = await self.authenticate_connection(websocket)
+                        authenticated = await self.__authenticate_connection(websocket)
                     else:
                         users_online = await websocket.recv()
                         print(f"Client: {users_online}")
@@ -72,7 +72,7 @@ class ClaverClient:
 
     def run(self):
         try:
-            asyncio.get_event_loop().run_until_complete(self.connection_handler())
+            asyncio.get_event_loop().run_until_complete(self.__connection_handler())
         except KeyboardInterrupt:
             pass
         except ConnectionRefusedError:

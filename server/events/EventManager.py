@@ -16,6 +16,7 @@ class EventManager:
         if "mode" in data:
             if data["mode"] == "WhiteBoard":
                 self.white_board.process_event(data, response)
+                response["exchange"] = "claver.whiteboard"
         else:
             response["error"] = "EventManager: Bad Event"
         return response

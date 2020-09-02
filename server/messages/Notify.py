@@ -1,7 +1,3 @@
-import asyncio
-import uuid
-
-import aio_pika
 from aio_pika import connect, Message, ExchangeType, DeliveryMode
 
 class MQConnection:

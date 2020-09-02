@@ -2,7 +2,7 @@ import asyncio
 import json
 from server.connections.ConnectionManager import ConnectionManager
 from server.events.EventManager import EventManager
-from server.messages.MQConnection import MQConnection
+from server.messages.Notify import MQConnection
 
 class Router:
 

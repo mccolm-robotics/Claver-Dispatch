@@ -62,7 +62,7 @@ class ClaverDispatch:
                 else:
                     if not await self.router.authenticate_client(websocket, message):
                         raise BadCredentials
-        except websockets.ConnectionClosed:
+        except (websockets.ConnectionClosed):
             # Exception raised when websockets.open() == False
             # Connection is closed. Exit iterator.
             pass
