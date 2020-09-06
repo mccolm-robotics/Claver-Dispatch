@@ -1,6 +1,6 @@
 import asyncio
 import json
-import uuid
+import time
 
 import websockets
 from aio_pika import connect, IncomingMessage, ExchangeType
@@ -11,9 +11,11 @@ Need to implement message batching and need to implement an ACK system for readi
 '''
 
 class Browser:
-    def __init__(self, event_loop, websocket, session_data: dict) -> None:
+    def __init__(self, event_loop, websocket, session_data: dict, mq_connector) -> None:
         self.event_loop = event_loop
         self.websocket = websocket
+        self.mq_connector = mq_connector
+        self.mode = "whiteboard"
         self.uuid = session_data["uuid"]    # Random UUID generated for the browser session
         self.id = session_data["id"]    # Session ID in MySQL sessions table
         self.user_id = session_data["user_id"]      # User id of user who requested the connection
@@ -23,12 +25,17 @@ class Browser:
         self.amqp_url = "amqp://guest:guest@localhost/"
         event_loop.create_task(self.notifications(self.on_message))
 
+    def set_mode(self, mode: str):
+        self.mode = mode
+
+    def get_header_id(self) -> dict:
+        return {"client": {"uuid": self.uuid, "timestamp": time.time(), "mode": self.mode}}
+
     async def on_message(self, message: IncomingMessage):
         with message.process():
             for header in message.headers:
                 content = json.loads(message.headers[header])
                 print(f"{header}: {content}")
-
             try:
                 await self.websocket.send(message.body.decode())
             except websockets.ConnectionClosed:
@@ -37,22 +44,12 @@ class Browser:
                 await asyncio.gather(*asyncio.all_tasks())
 
     async def notifications(self, callback):
-        # Perform connection
         self.connection = await connect(self.amqp_url, loop=self.event_loop)
-
-        # Creating a channel
         channel = await self.connection.channel()
-
         await channel.set_qos(prefetch_count=1)
-
-        self.events_exchange = await channel.declare_exchange("claver-events", ExchangeType.FANOUT, auto_delete=False, durable=True)
-
-        # Declaring temporary queue with auto delete
-        self.queue = await channel.declare_queue(exclusive=True)
-
-        await self.queue.bind(self.events_exchange)
-
-        # Start listening to the queue (auto generated name)
+        self.queue = await channel.declare_queue(str(self.uuid), exclusive=True)
+        await self.mq_connector.bind_exchange(queue=self.queue, exchange="system")
+        await self.mq_connector.bind_exchange(queue=self.queue, exchange=self.mode)
         self.tag = await self.queue.consume(callback)
 
     async def close(self):
@@ -61,7 +58,6 @@ class Browser:
                 await asyncio.sleep(1)
             else:
                 break
-        # await self.queue.unbind(self.events_exchange)
         # await self.queue.delete()
         await self.connection.close()
         print("\tClosed Connection to Rabbit")

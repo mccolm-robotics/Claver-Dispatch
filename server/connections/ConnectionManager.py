@@ -7,6 +7,7 @@ from cryptography.fernet import Fernet
 from server.connections.User import User
 from server.connections.Browser import Browser
 from server.connections.ConnectionDB import ConnectionDB
+from server.connections.MQConnector import MQConnector
 
 
 class ConnectionManager:
@@ -17,17 +18,21 @@ class ConnectionManager:
         self.client_dict = {}           # Dictionary of user objects
         # self.db_sessions = Sessions()
         self.connection_db = ConnectionDB()
+        self.mq_connector = MQConnector(event_loop)
+
+    def get_client(self, websocket: websockets):
+        return self.client_dict[websocket]
 
     def authorized_user(self, websocket):
         return websocket in self.connected_clients
 
     def attach_user(self, websocket: websockets):
         self.connected_clients.add(websocket)
-        self.client_dict[websocket] = User(self.event_loop, websocket)
+        self.client_dict[websocket] = User(self.event_loop, websocket, self.mq_connector)
 
     def attach_browser(self, websocket: websockets, session_data: dict) -> None:
         self.connected_clients.add(websocket)
-        self.client_dict[websocket] = Browser(self.event_loop, websocket, session_data)
+        self.client_dict[websocket] = Browser(self.event_loop, websocket, session_data, self.mq_connector)
 
     def isClientAttached(self, websocket):
         if websocket in self.connected_clients:
@@ -45,7 +50,7 @@ class ConnectionManager:
     def get_connected_clients(self):
         return self.connected_clients
 
-    async def authenticate_user(self, websocket: websockets, data: dict) -> bool:
+    async def authenticate_client(self, websocket: websockets, data: dict) -> bool:
         if "agent" in data:
             if data["agent"] == "browser":
                 print("\tType: Browser")

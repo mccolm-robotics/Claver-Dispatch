@@ -38,14 +38,6 @@ class ClaverDispatch:
             print('Server: Disconnected')
             self.event_loop.stop()  # Changing loop.close() to loop.stop() prevents an exception when there are still running tasks.
 
-    async def incoming_events_handler(self, websocket: websockets, path: str) -> None:
-        try:
-            await self.router.ingest_events(websocket)
-        except websockets.ConnectionClosed:
-            print("Stalled: Client Disconnected")
-
-    # async def update_node_map(self) -> None:
-    #     await self.router.broadcast_connected_users_list()
 
     async def connection_handler(self, websocket: websockets, path: str) -> None:
         """
@@ -58,7 +50,7 @@ class ClaverDispatch:
             print("Client Connected:")
             async for message in websocket:
                 if self.connectionManager.authorized_user(websocket):
-                    await self.router.ingest_events(message)
+                    await self.router.ingest_events(websocket, message)
                 else:
                     if not await self.router.authenticate_client(websocket, message):
                         raise BadCredentials

@@ -1,4 +1,4 @@
-from server.events.WhiteBoard import WhiteBoard
+from services.events import WhiteBoard
 from server.connections.ConnectionManager import ConnectionManager
 
 
