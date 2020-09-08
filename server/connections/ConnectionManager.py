@@ -50,6 +50,9 @@ class ConnectionManager:
     def get_connected_clients(self):
         return self.connected_clients
 
+    async def authorization_handshake(self, websocket: websockets, data: dict):
+        await websocket.send(response)
+
     async def authenticate_client(self, websocket: websockets, data: dict) -> bool:
         if "agent" in data:
             if data["agent"] == "browser":

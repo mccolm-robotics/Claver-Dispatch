@@ -13,7 +13,7 @@ class ClaverClient:
             self.ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile="server.crt")
             self.ssl_context.load_cert_chain(certfile="client.crt", keyfile="client.key")
         self.uri = "ws://localhost:6789"
-        self.run()
+        self.main()
 
     def __getSecretKey(self):
         with open(self.dir_path + "/secret_inSecureStorage.txt", "r") as file:
@@ -45,7 +45,10 @@ class ClaverClient:
         serial_num = self.__getDeviceID()
 
         token = pyotp.TOTP(secret_key)
-        credentials = json.dumps({"agent": "node", "nid": serial_num, "token": token.now(), "qdot": public_key, "mode": "WhiteBoard"})
+        if self.check_for_public_key():
+            credentials = json.dumps({"agent": "node", "nid": serial_num, "token": token.now(), "qdot": public_key, "mode": "WhiteBoard"})
+        else:
+            credentials = json.dumps({"agent": "node", "nid": serial_num, "mode": "handshake"})
 
         await websocket.send(credentials)
         response = await websocket.recv()
@@ -57,22 +60,30 @@ class ClaverClient:
             return True
         return False
 
-    async def __connection_handler(self):
+    def check_for_public_key(self):
+        if self.__getPublicKey():
+            return True
+        return False
+
+    async def __run(self):
         authenticated = False
         async with websockets.connect(self.uri) as websocket:
             while True:
                 try:
                     if not authenticated:
-                        authenticated = await self.__authenticate_connection(websocket)
+                        if self.check_for_public_key():
+                            authenticated = await self.__authenticate_connection(websocket)
+                        else:
+                            print("Initiating Handshake")
                     else:
-                        users_online = await websocket.recv()
-                        print(f"Client: {users_online}")
+                        message = await websocket.recv()
+                        print(f"Node: {message}")
                 except websockets.ConnectionClosed:
                     break
 
-    def run(self):
+    def main(self):
         try:
-            asyncio.get_event_loop().run_until_complete(self.__connection_handler())
+            asyncio.get_event_loop().run_until_complete(self.__run())
         except KeyboardInterrupt:
             pass
         except ConnectionRefusedError:
