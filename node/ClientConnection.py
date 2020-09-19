@@ -6,7 +6,7 @@ import ssl
 import pyotp
 import websockets
 
-class ClaverClient:
+class ClientConnection:
     def __init__(self, use_ssl=False):
         self.dir_path = os.path.dirname(os.path.realpath(__file__))
         if use_ssl:
@@ -90,5 +90,5 @@ class ClaverClient:
             print("Connection refused. Server offline")
 
 if __name__ == "__main__":
-    ClaverClient(use_ssl=False)
+    ClientConnection(use_ssl=False)
 

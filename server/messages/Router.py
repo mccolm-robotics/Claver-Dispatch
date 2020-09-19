@@ -35,6 +35,7 @@ class Router:
         # ToDo: Perform regex to ensure json message is safe
         data = json.loads(message)
         if "mode" in data:
+            print(data)
             if await self.connectionManager.authenticate_client(websocket, data):
                 await self.messageBus.request_state_update(data["mode"], self.connectionManager.get_client(websocket).get_header_id())
                 await self.broadcast_connected_users_list()
