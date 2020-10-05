@@ -1,6 +1,8 @@
 aio-pika==6.6.1
 aiormq==3.2.3
+certifi==2020.6.20
 cffi==1.14.2
+chardet==3.0.4
 cryptography==3.0
 idna==2.10
 multidict==4.7.6
@@ -14,7 +16,9 @@ PyGObject==3.38.0
 PyGObject-stubs==0.0.2
 pyOpenSSL==19.1.0
 pyotp==2.4.0
+requests==2.24.0
 setproctitle==1.1.10
 six==1.15.0
+urllib3==1.25.10
 websockets==8.1
 yarl==1.5.1

@@ -2,8 +2,8 @@ from server.database.DBConnection import DBConnection
 import binascii
 
 class NodeDevices:
-    def __init__(self):
-        self.db_connection = DBConnection()
+    def __init__(self, db_connection):
+        self.db_connection = db_connection
 
     def get_seed(self, device_id) -> str:
         stmt = "SELECT seed FROM node_devices WHERE device_id = ?"

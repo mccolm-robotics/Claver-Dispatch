@@ -1,9 +1,11 @@
+import asyncio
 import json
+from datetime import time
+
 import cryptography
 import pyotp
 import websockets
 from cryptography.fernet import Fernet
-
 from server.connections.User import User
 from server.connections.Browser import Browser
 from server.connections.ConnectionDB import ConnectionDB
@@ -16,9 +18,19 @@ class ConnectionManager:
         self.event_loop = event_loop
         self.connected_clients = set()  # Unique list (set) of current websockets
         self.client_dict = {}           # Dictionary of user objects
-        # self.db_sessions = Sessions()
-        self.connection_db = ConnectionDB()
+        self.connection_db = ConnectionDB(event_loop)
         self.mq_connector = MQConnector(event_loop)
+        event_loop.create_task(self.run_timer())
+        self.running = True
+
+    async def run_timer(self):
+        while self.running:
+            browser_sessions = await self.connection_db.get_all_browser_sessions()
+            print(f"browser data: {browser_sessions}")
+            # for connection in self.client_dict:
+            #     if type(self.client_dict[connection]) == Browser:
+            #         print(self.client_dict[connection].get_uuid())
+            await asyncio.sleep(30)
 
     def get_client(self, websocket: websockets):
         return self.client_dict[websocket]
@@ -30,9 +42,9 @@ class ConnectionManager:
         self.connected_clients.add(websocket)
         self.client_dict[websocket] = User(self.event_loop, websocket, self.mq_connector)
 
-    def attach_browser(self, websocket: websockets, session_data: dict) -> None:
+    async def attach_browser(self, websocket: websockets, session_data) -> None:
         self.connected_clients.add(websocket)
-        self.client_dict[websocket] = Browser(self.event_loop, websocket, session_data, self.mq_connector)
+        self.client_dict[websocket] = await Browser.create(self.event_loop, websocket, session_data, self.mq_connector)
 
     def isClientAttached(self, websocket):
         if websocket in self.connected_clients:
@@ -57,21 +69,21 @@ class ConnectionManager:
         if "agent" in data:
             if data["agent"] == "browser":
                 print("\tType: Browser")
-                if "bid" in data and "token" in data:
+                if "bid" in data:
                     # ToDo: Check length and use regex to confirm valid characters for bid
-                    session_data = self.connection_db.get_browser_session_data(data["bid"])
-                    # print(data["bid"])
+                    session_data = await self.connection_db.get_browser_session_data(data["bid"])
+                    # print(f"Session Data: {session_data}")
                     # ToDo: Check to see if session is already active. Compare request IP to browser IP
                     if session_data:
                         session_data["uuid"] = data["bid"]
-                        # print("Browser connected")
-                        # ToDo: make sure OTP is valid
-                        if data["token"] == "958058":
-                            print("\tToken: Valid")
-                            self.attach_browser(websocket, session_data)
+                        if not session_data["active"]:
+                            await self.connection_db.set_session_active(session_data["id"])
+                            await self.attach_browser(websocket, session_data)
                             return True
                         else:
-                             print("\tToken: Rejected")
+                             print("Error: Session already filled")
+                    else:
+                        print("Error: Unable to read session table values")
             elif data["agent"] == "node":
                 if "token" in data and "nid" in data and "qdot" in data:
                     # secret_key = pyotp.random_base32(32)
@@ -97,6 +109,10 @@ class ConnectionManager:
                         return True
                 return False
         return False
+
+    async def cleanup(self):
+        self.running = False
+        await self.connection_db.cleanup()
 
 '''
 Resources: pyOTP 

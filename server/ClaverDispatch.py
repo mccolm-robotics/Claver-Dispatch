@@ -33,6 +33,7 @@ class ClaverDispatch:
         except KeyboardInterrupt:
             pass
         finally:
+            self.event_loop.run_until_complete(self.connectionManager.cleanup())
             server.close()
             self.event_loop.run_until_complete(server.wait_closed())
             print('Server: Disconnected')

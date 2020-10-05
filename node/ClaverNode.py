@@ -14,36 +14,25 @@ gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GLib
 import asyncio, threading
 
-
-class ClaverTest(Gtk.Application):
-    def __init__(self):
-        Gtk.Application.__init__(self)
+class ClaverWebsocket:
+    def __init__(self, claverNode):
+        self.claverNode = claverNode
         self.uri = "ws://localhost:6789"
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
-        self.t1 = threading.Thread(target=self.run_asyncio)
-        self.t1.daemon = True
-        self.t1.start()
-        print(*sys.argv)    # Full executable path to this script
 
-
-        setproctitle.setproctitle('Claver Dispatch')
-        print(os.getpid())
-        process = psutil.Process(os.getpid())
-        print(process.name())
-        pid_name = check_output(["pidof", "Claver Dispatch"])
-        print(pid_name.decode())
-
+    def get_loop(self):
+        return self.loop
 
     async def __authenticate_connection(self, websocket: websockets) -> bool:
         credentials = json.dumps({"agent": 'browser', "bid": 'cb6070bf-e9aa-11ea-97ab-7085c2d6de42', "token": '958058', "mode": 'WhiteBoard'})
         await websocket.send(credentials)
         response = await websocket.recv()
         data = json.loads(response)
-        GLib.idle_add(self.update_gui, data)
+        GLib.idle_add(self.claverNode.update_gui, data)
         return True
 
-    async def __send_data(self, data):
+    async def send_data(self, data):
         message = json.dumps(data)
         await self.websocket.send(message)
 
@@ -58,7 +47,7 @@ class ClaverTest(Gtk.Application):
                     else:
                         message = await websocket.recv()
                         data = json.loads(message)
-                        GLib.idle_add(self.update_gui, data)
+                        GLib.idle_add(self.claverNode.update_gui, data)
                 except websockets.ConnectionClosed:
                     break
 
@@ -69,6 +58,23 @@ class ClaverTest(Gtk.Application):
             pass
         except ConnectionRefusedError:
             print("Connection refused. Server offline")
+
+
+class ClaverNode(Gtk.Application):
+    def __init__(self):
+        Gtk.Application.__init__(self)
+        self.claverWebsocket = ClaverWebsocket(self)
+        self.t1 = threading.Thread(target=self.claverWebsocket.run_asyncio)
+        self.t1.daemon = True
+        self.t1.start()
+
+        # setproctitle.setproctitle('Claver Dispatch Node')
+        # print(os.getpid())
+        # process = psutil.Process(os.getpid())
+        # print(process.name())
+        # pid_name = check_output(["pidof", "Claver Dispatch Node"])
+        # print(pid_name.decode())
+
 
     def do_activate(self):
         window = Gtk.Window(application=self)
@@ -101,10 +107,10 @@ class ClaverTest(Gtk.Application):
     def do_clicked(self, button):
         if button.get_label() == "-":
             data = {"mode": "WhiteBoard", "action": "minus"}
-            asyncio.run_coroutine_threadsafe(self.__send_data(data), self.loop)
+            asyncio.run_coroutine_threadsafe(self.claverWebsocket.send_data(data), self.claverWebsocket.get_loop())
         elif button.get_label() == "+":
             data = {"mode": "WhiteBoard", "action": "plus"}
-            asyncio.run_coroutine_threadsafe(self.__send_data(data), self.loop)
+            asyncio.run_coroutine_threadsafe(self.claverWebsocket.send_data(data), self.claverWebsocket.get_loop())
 
     def update_state_label(self, text):
         self.state_label.set_text(str(text))
@@ -112,35 +118,17 @@ class ClaverTest(Gtk.Application):
     def update_users_label(self, text):
         self.users_label.set_text(f"{text} users online")
 
-    def restart_program(self):
-        """Restarts the current program, with file objects and descriptors
-           cleanup
-        """
-
-        try:
-            p = psutil.Process(os.getpid())
-            for handler in p.open_files() + p.connections():
-                os.close(handler.fd)
-        except Exception as e:
-            logging.error(e)
-
-        python = sys.executable
-        os.execl(python, python, *sys.argv)
-
     def update_gui(self, data):
         if "type" in data:
             if data["type"] == "state":
-                if data["value"] == 7:
-                    self.restart_program()
-                else:
-                    self.update_state_label(data["value"])
+                self.update_state_label(data["value"])
             elif data["type"] == "users":
                 self.update_users_label(data["count"])
             else:
                 print("Unsupported event")
 
 if __name__ == "__main__":
-    application = ClaverTest()
+    application = ClaverNode()
     exit_status = application.run(sys.argv)
     sys.exit(exit_status)
 

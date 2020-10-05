@@ -11,7 +11,9 @@ Need to implement message batching and need to implement an ACK system for readi
 '''
 
 class Browser:
-    def __init__(self, event_loop, websocket, session_data: dict, mq_connector) -> None:
+    @classmethod
+    async def create(cls, event_loop, websocket, session_data: dict, mq_connector):
+        self = Browser()
         self.event_loop = event_loop
         self.websocket = websocket
         self.mq_connector = mq_connector
@@ -23,7 +25,11 @@ class Browser:
         self.connection = None
 
         self.amqp_url = "amqp://guest:guest@localhost/"
-        event_loop.create_task(self.notifications(self.on_message))
+        await self.notifications(self.on_message)
+        return self
+
+    def get_uuid(self):
+        return self.uuid
 
     def set_mode(self, mode: str):
         self.mode = mode
@@ -44,6 +50,11 @@ class Browser:
                 await asyncio.gather(*asyncio.all_tasks())
 
     async def notifications(self, callback):
+        """
+        This function establishes a connection with RabbitMQ and creates a message queue
+        :param callback: the function that receives messages sent by RabbitMQ
+        :return:
+        """
         self.connection = await connect(self.amqp_url, loop=self.event_loop)
         channel = await self.connection.channel()
         await channel.set_qos(prefetch_count=1)
@@ -61,3 +72,8 @@ class Browser:
         # await self.queue.delete()
         await self.connection.close()
         print("\tClosed Connection to Rabbit")
+
+"""
+Resources: awaiting class initialization (asyncio)
+https://stackoverflow.com/questions/33128325/how-to-set-class-attribute-with-await-in-init
+"""

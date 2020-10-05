@@ -26,10 +26,7 @@ class Router:
         data = json.loads(message)
         if "mode" in data:
             self.connectionManager.get_client(websocket).set_mode(data["mode"])
-
-        await self.messageBus.add_to_events_queue(
-            message,
-            self.connectionManager.get_client(websocket).get_header_id())
+        await self.messageBus.add_to_events_queue(message, self.connectionManager.get_client(websocket).get_header_id())
 
     async def authenticate_client(self, websocket, message):
         # ToDo: Perform regex to ensure json message is safe
