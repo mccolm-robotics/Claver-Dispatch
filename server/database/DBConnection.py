@@ -11,6 +11,7 @@ class DBConnection:
 
     # Switch over to connection pooling:
     # https://aiomysql.readthedocs.io/en/latest/pool.html
+    # https://programtalk.com/vs2/python/5/peewee-async/peewee_async.py/
 
     async def query_fetch_returns_dict(self, query, args=None):
         conn = await aiomysql.connect(host=self.host, port=self.port,
