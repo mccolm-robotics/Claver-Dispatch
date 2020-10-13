@@ -15,9 +15,9 @@ class Sessions:
         result = await self.db_connection.query_fetch_returns_dict(query=stmt, args=vals)
         return result[0]
 
-    async def get_all_browser_sessions(self):
+    async def get_all_dashboard_sessions(self):
         stmt = "SELECT id, user_id, uuid, ip_addr, active, created FROM sessions WHERE session_type = %s"
-        vals = ("browser",)
+        vals = ("dashboard",)
         result = await self.db_connection.query_fetch_returns_dict(query=stmt, args=vals)
         return result
 
@@ -29,6 +29,11 @@ class Sessions:
     async def remove_all_sessions(self):
         stmt = "DELETE FROM sessions"
         await self.db_connection.query_push(query=stmt)
+
+    async def delete_browser_session(self, id):
+        stmt = "DELETE FROM sessions WHERE id = %s"
+        vals = (id,)
+        await self.db_connection.query_push(query=stmt, args=vals)
 
     async def cleanup(self):
         await self.remove_all_sessions()

@@ -1,44 +1,40 @@
-import asyncio
 import json
+
 from server.connections.ConnectionManager import ConnectionManager
-from services.events import EventManager
 from server.messages.Bus import Bus
+from server.messages.StateManager import StateManager
+
 
 class Router:
-
     def __init__(self, connectionManager: ConnectionManager, eventLoop) -> None:
         self.connectionManager = connectionManager
-        self.messageBus = Bus(eventLoop)
+        self.messageBus = Bus(connectionManager, eventLoop)
+        self.stateManager = StateManager(connectionManager, self.messageBus, eventLoop)
 
-    async def broadcast_connected_users_list(self) -> None:
-        count = {"type": "users", "count": self.connectionManager.get_client_count()}
-        await self.__mq_message_broadcast(json.dumps(count))
-
-    async def __mq_message_broadcast(self, message: str) -> None:
-        await self.messageBus.broadcast_message(message)
-
-    async def __direct_message_broadcast(self, message: str) -> None:
-        connected_clients = self.connectionManager.get_connected_clients()
-        if connected_clients:  # asyncio.wait doesn't accept an empty list
-            await asyncio.wait([user.send(message) for user in connected_clients])
+    async def adjust_connected_users_list(self, agent) -> None:
+        """ Notifies the Claver network of changes to connected clients list. """
+        await self.stateManager.notify_claver_clients_of_closed_connection(agent)
 
     async def ingest_events(self, websocket, message: str) -> None:
+        """ All incoming websocket messages are dumped to the 'events queue' for processing """
         data = json.loads(message)
-        if "mode" in data:
-            self.connectionManager.get_client(websocket).set_mode(data["mode"])
+        if "mode" in data:  # ToDo: This 'check and set' is duplicated in "authenticate_client" per client now. Remove from here
+            # Is this needed when a Claver board changes its mode?
+            self.connectionManager.get_client(websocket).set_mode(data["mode"]) # This is now passed in with the handshake data
+        # The incoming message is sent out for processing with information about the sender stored in the header variable
         await self.messageBus.add_to_events_queue(message, self.connectionManager.get_client(websocket).get_header_id())
 
-    async def authenticate_client(self, websocket, message):
-        # ToDo: Perform regex to ensure json message is safe
-        data = json.loads(message)
-        if "mode" in data:
-            print(data)
-            if await self.connectionManager.authenticate_client(websocket, data):
-                await self.messageBus.request_state_update(data["mode"], self.connectionManager.get_client(websocket).get_header_id())
-                await self.broadcast_connected_users_list()
+    async def authenticate_client(self, websocket, message) -> bool:
+        """ Authorization step for new websocket connections. Handshake JSON string is parsed for authentication tokens
+            and, if valid, the websocket is passed back initial state data appropriate to its mode value. """
+        handshake_data = json.loads(message)    # ToDo: Perform regex to ensure JSON message is safe
+        if "mode" in handshake_data:
+            print(handshake_data)
+            if await self.connectionManager.authenticate_client(websocket, handshake_data):
+                await self.stateManager.get_initial_state(websocket)
                 return True
-            elif data["mode"] == "handshake":
-                await self.connectionManager.authorization_handshake(websocket, data)
+            elif handshake_data["mode"] == "handshake":
+                await self.connectionManager.authorization_handshake(websocket, handshake_data)
         else:
-            print("Router: authenticate_client - data does not include 'mode'")
+            print("Router: Authenticating Client - Handshake data does not include 'mode'")
             return False

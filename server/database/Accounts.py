@@ -15,3 +15,17 @@ class Accounts:
             result_pw = password
         query.close()
         return result_id, result_pw
+
+from server.database.DBConnection import DBConnection
+
+# https://stackoverflow.com/questions/283645/python-list-in-sql-query-as-parameter?noredirect=1&lq=1
+
+class Accounts:
+    def __init__(self, db_connection):
+        self.db_connection = db_connection
+
+    async def get_account(self, username):
+        stmt = "SELECT id, password FROM accounts WHERE username = %s"
+        vals = (username,)
+        result = await self.db_connection.query_fetch_returns_dict(query=stmt, args=vals)
+        return result[0]

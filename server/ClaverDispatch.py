@@ -1,5 +1,6 @@
 import asyncio
 import ssl
+
 import websockets
 from server.connections.ConnectionManager import ConnectionManager
 from server.messages.Router import Router
@@ -19,10 +20,13 @@ class ClaverDispatch:
 
         self.event_loop = asyncio.get_event_loop()
         # self.event_loop.set_debug(True)     # Turn on debug mode
-        self.connectionManager = ConnectionManager(self.event_loop)
-        self.router = Router(self.connectionManager, self.event_loop)
+        self.event_loop.run_until_complete(self.initialize_members())
         self.start_server = websockets.serve(self.connection_handler, host, port, ssl=ssl_context) # Creates the server
         self.run()
+
+    async def initialize_members(self):
+        self.connectionManager = await ConnectionManager.initialize(self.event_loop)
+        self.router = Router(self.connectionManager, self.event_loop)
 
     def run(self) -> None:
         """Starts the server"""
@@ -37,10 +41,12 @@ class ClaverDispatch:
             server.close()
             self.event_loop.run_until_complete(server.wait_closed())
             print('Server: Disconnected')
-            self.event_loop.stop()  # Changing loop.close() to loop.stop() prevents an exception when there are still running tasks.
+            # self.event_loop.stop()  # Changing loop.close() to loop.stop() prevents an exception when there are still running tasks.
+            self.event_loop.run_until_complete(self.event_loop.shutdown_asyncgens())
+            self.event_loop.close()
 
 
-    async def connection_handler(self, websocket: websockets, path: str) -> None:
+    async def connection_handler(self, websocket: websockets, path: str):
         """
         Coroutine: Websockets connection handler.
         This function executes the application logic for a single connection and closes the connection when done.
@@ -50,7 +56,7 @@ class ClaverDispatch:
         try:
             print("Client Connected:")
             async for message in websocket:
-                if self.connectionManager.authorized_user(websocket):
+                if self.connectionManager.is_authorized_user(websocket):
                     await self.router.ingest_events(websocket, message)
                 else:
                     if not await self.router.authenticate_client(websocket, message):
@@ -64,9 +70,10 @@ class ClaverDispatch:
             print("\tBad Credentials")
             pass
         finally:
-            if self.connectionManager.isClientAttached(websocket):
+            if self.connectionManager.is_authorized_user(websocket):
+                agent = self.connectionManager.get_client(websocket).get_agent()
                 await self.connectionManager.detach_client(websocket)
-                await self.router.broadcast_connected_users_list()
+                await self.router.adjust_connected_users_list(agent)
             else:
                 await websocket.close()
             print("Client Disconnected")
