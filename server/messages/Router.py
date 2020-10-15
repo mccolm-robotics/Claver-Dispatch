@@ -9,6 +9,7 @@ class Router:
     def __init__(self, connectionManager: ConnectionManager, eventLoop) -> None:
         self.connectionManager = connectionManager
         self.messageBus = Bus(connectionManager, eventLoop)
+        self.connectionManager.set_messageBus(self.messageBus)
         self.stateManager = StateManager(connectionManager, self.messageBus, eventLoop)
 
     async def adjust_connected_users_list(self, agent) -> None:
@@ -18,11 +19,16 @@ class Router:
     async def ingest_events(self, websocket, message: str) -> None:
         """ All incoming websocket messages are dumped to the 'events queue' for processing """
         data = json.loads(message)
-        if "mode" in data:  # ToDo: This 'check and set' is duplicated in "authenticate_client" per client now. Remove from here
-            # Is this needed when a Claver board changes its mode?
-            self.connectionManager.get_client(websocket).set_mode(data["mode"]) # This is now passed in with the handshake data
-        # The incoming message is sent out for processing with information about the sender stored in the header variable
-        await self.messageBus.add_to_events_queue(message, self.connectionManager.get_client(websocket).get_header_id())
+        # More sophisticated control over websocket communication
+        if "channel_type" in data:
+            if data["channel_type"] == "direct":
+                self.connectionManager.get_client(websocket).incoming_message(json.loads(message))
+        else:
+            if "mode" in data:  # ToDo: This 'check and set' is duplicated in "authenticate_client" per client now. Remove from here
+                # Is this needed when a Claver board changes its mode?
+                self.connectionManager.get_client(websocket).set_mode(data["mode"]) # This is now passed in with the handshake data
+            # The incoming message is sent out for processing with information about the sender stored in the header variable
+            await self.messageBus.add_to_events_queue(message, self.connectionManager.get_client(websocket).get_header_id())
 
     async def authenticate_client(self, websocket, message) -> bool:
         """ Authorization step for new websocket connections. Handshake JSON string is parsed for authentication tokens

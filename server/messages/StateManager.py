@@ -7,32 +7,8 @@ from server.messages.StateSentinel import StateSentinel
 class StateManager:
     def __init__(self, connectionManager, messageBus, event_loop):
         self.connectionManager = connectionManager
-        self.connectionManager.set_state_manager(self)
         self.messageBus = messageBus
         self.event_loop = event_loop
-        self.running_sentinels = {"unified": {}, "singleton": {}}
-        self.clients_requesting_push_refresh = {"unified": {}, "singleton": {}}
-
-    async def register_refresh_agent(self, refresh_type, agent, mode, websocket):
-        # Have we differentiated between Admin Dashboards and Node Dashboards? These differ according to user level and contain different information
-        if refresh_type == "unified":   # Unified objects will have static methods for constructing state values
-            construct_state_func = self.connectionManager.get_client(websocket).get_static_state_construct_func()
-            refresh_interval = self.connectionManager.get_client(websocket).get_refresh_interval()
-            if agent in self.running_sentinels[refresh_type] and len(self.running_sentinels[refresh_type][agent]) > 0:
-                if mode not in self.running_sentinels[refresh_type][agent]:
-                    self.running_sentinels[refresh_type][agent][mode] = await StateSentinel.initialize(self.event_loop, self.connectionManager, construct_state_func, refresh_interval)
-            else:
-                self.running_sentinels[refresh_type][agent] = {}
-                self.running_sentinels[refresh_type][agent][mode] = await StateSentinel.initialize(self.event_loop, self.connectionManager, construct_state_func, refresh_interval)
-                self.clients_requesting_push_refresh[refresh_type][agent] = {mode: 1}
-
-    async def terminate_refresh_agent(self, refresh_type, agent, mode):
-        self.clients_requesting_push_refresh[refresh_type][agent][mode] -= 1
-        if self.clients_requesting_push_refresh[refresh_type][agent][mode] == 0:
-            self.running_sentinels[refresh_type][agent][mode].cleanup()
-            del self.running_sentinels[refresh_type][agent][mode]
-            if len(self.running_sentinels[refresh_type][agent]) == 0:
-                del self.running_sentinels[refresh_type][agent]
 
     async def broadcast_connected_users_list(self) -> None:
         # This needs to be reworked into something more useful
@@ -41,19 +17,22 @@ class StateManager:
 
     async def send_state_values_to_client(self, websocket):
         """ Gets data required by client layout and sends directly to client via MQ message """
-        state_values = self.connectionManager.get_client(websocket).construct_state(self.connectionManager)
+        state_values = self.connectionManager.get_client(websocket).construct_state()
+        # !!!! When is state data actually ever sent to more than one client? This is a per-instance concern.
         if state_values["external_fulfillment"] is False:   # Some state requests need to be fulfilled by the microservices that manage those modes
             await self.messageBus.direct_message(json.dumps(state_values["state_values"]), self.connectionManager.get_client(websocket).get_uuid())
         else:
             await self.messageBus.add_to_events_queue(json.dumps(state_values["state_values"]), state_values["header"])
 
     async def update_dashboard_state(self):
+        # Um.. no. Admin dashboards can have all updates but all other dashboards need to fetch their own updates. Best to leave
+        # this to each individual dashboard to find.
         # Are we updating all possible attached dashboards? Is that what should be happening?
         active_dashboards = self.connectionManager.get_connected_dashboards()
         for dashboard_type in active_dashboards.keys():
             # But these all use the same static function for generating the state_vals!
             websocket = next(iter(active_dashboards[dashboard_type]))   # Get the first dashboard (websocket) from set
-            state_values = self.connectionManager.get_client(websocket).construct_state(self.connectionManager)
+            state_values = self.connectionManager.get_client(websocket).construct_state()
             await self.messageBus.broadcast_event_update_by_key(json.dumps(state_values["state_values"]), dashboard_type)
 
     async def get_initial_state(self, websocket):

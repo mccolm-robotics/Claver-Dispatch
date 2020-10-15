@@ -17,11 +17,11 @@ class ConnectionManager:
         self.connection_db = None
         self.mq_connector = None
         self.event_loop = None
-        self.connected_clients = set()  # Unique list (set) of current websockets
+        self.messageBus = None
+        self.connected_clients = set()  # Unique list (set) of current websockets. This facilitates a quick lookup when confirming a connection's authentication status
         self.connected_nodes = set()
-        self.connected_dashboards = {}
-        self.client_dict = {}  # Dictionary of user objects
-        self.stateManager = None
+        self.connected_dashboards = {}  # This dictionary groups websocket connections with agent == dashboard by mode. Currently only used in StateManager()
+        self.client_dict = {}  # Dictionary of user objects. Each websocket object is the key value that identifies its object instance (defined by the 'agent' value in handshake data)
 
     @classmethod
     async def initialize(cls, event_loop):
@@ -32,11 +32,11 @@ class ConnectionManager:
         self.mq_connector = await MQConnector.initialize(event_loop)
         return self
 
-    def set_state_manager(self, stateManager):
-        self.stateManager = stateManager
+    def set_messageBus(self, messageBus):
+        self.messageBus = messageBus
 
-    def get_state_manager(self):
-        return self.stateManager
+    def get_messageBus(self):
+        return self.messageBus
 
     def get_client(self, websocket: websockets):
         """ Returns single client object linked to websocket object """
@@ -73,14 +73,13 @@ class ConnectionManager:
         self.client_dict[websocket] = await Node.initialize(self.event_loop, websocket, handshake_data, self.mq_connector, self.connection_db)
 
     async def attach_dashboard(self, websocket: websockets, session_data, handshake_data) -> None:
-        """ Adds websocket to records of connected websockets. """
+        """ Adds websocket to dynamic dictionary of client sets. Dictionary is keyed to 'mode' value sent during websocket handshake. """
         self.connected_clients.add(websocket)
         # self.connected_dashboards.add(websocket)
         if handshake_data["mode"].lower() not in self.connected_dashboards:
             self.connected_dashboards[handshake_data["mode"].lower()] = set()
         self.connected_dashboards[handshake_data["mode"].lower()].add(websocket)
         self.client_dict[websocket] = await Dashboard.initialize(self.event_loop, websocket, session_data, handshake_data, self.mq_connector, self.connection_db, self)
-        await self.client_dict[websocket].register_refresh_request(self.stateManager)
 
     async def detach_client(self, websocket: websockets):
         """ Closes client objects and removes websocket from records of connected websockets """

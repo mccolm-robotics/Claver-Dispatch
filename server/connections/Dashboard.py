@@ -12,6 +12,8 @@ Need to implement message batching and need to implement an ACK system for readi
 
 class Dashboard:
     def __init__(self):
+        self.messageBus = None
+        self.task_update_state_values = None
         self.refresh_interval = None
         self.connectionManager = None
         self.agent = None
@@ -24,8 +26,6 @@ class Dashboard:
         self.websocket = None
         self.state = None
         self.connection = None
-        self.push_refresh_type = "unified"      # singleton = each object individually receives push update of state values
-                                                # unified = all objects having the same agent and mode receive the same update in the same interval through RabbitMQ
 
     @classmethod
     async def initialize(cls, event_loop, websocket, session_data: dict, handshake_data: dict, mq_connector, connection_db, connectionManager):
@@ -36,12 +36,13 @@ class Dashboard:
         self.mq_connector = mq_connector
         self.connection_db = connection_db
         self.connectionManager = connectionManager
+        self.messageBus = connectionManager.get_messageBus()
         self.uuid = session_data["uuid"]    # Random UUID generated for the browser session
         self.id = session_data["id"]    # Session ID in MySQL sessions table
         self.user_id = session_data["user_id"]      # User id of user who requested the connection
         self.created_timestamp = session_data["created"]    # Timestamp when the browser session was created
         self.ip_addr = session_data["ip_addr"]
-        self.mode = handshake_data["mode"].lower()
+        self.mode = handshake_data["mode"].lower()  # Expected values: admin_dashboard, node_dashboard
         self.agent = handshake_data["agent"].lower()
         if "state" in handshake_data:
             self.state = handshake_data["state"]
@@ -49,13 +50,25 @@ class Dashboard:
                 self.refresh_interval = handshake_data["state"]["refresh"]
         self.amqp_url = "amqp://guest:guest@localhost/"
         await self.notifications(self.on_message)
+        self.running = True
+        self.task_update_state_values = event_loop.create_task(self.update_state_values())
         return self
 
-    async def register_refresh_request(self, stateManager):
-        await stateManager.register_refresh_agent(self.push_refresh_type, self.agent, self.mode, self.websocket)
+    def incoming_message(self, data: dict):
+        if "action" in data:
+            if "update" in data["action"]:
+                if "setting" in data["action"]["update"]:
+                    self.update_settings(data["action"]["update"]["setting"])
 
-    def get_refresh_interval(self):
-        return self.refresh_interval
+    def update_settings(self, data):
+        if "refresh_interval" in data:
+            self.refresh_interval = int(data["refresh_interval"])
+
+    async def update_state_values(self):
+        while self.running:
+            state_values = self.construct_state()["state_values"]
+            await self.websocket.send(json.dumps(state_values))
+            await asyncio.sleep(self.refresh_interval)
 
     def get_agent(self) -> str:
         return self.agent
@@ -103,6 +116,20 @@ class Dashboard:
         await self.mq_connector.bind_queue_to_exchange(queue=self.queue, exchange=self.mode)
         self.tag = await self.queue.consume(callback)
 
+    def construct_state(self) -> dict:
+        """ Provides state information to the Claver Dashboard Web Portal """
+        state_values = {}
+        if self.mode == "admin_dashboard":
+            state_values = {}
+            client_dict = self.connectionManager.get_client_dict()
+            set_of_connected_nodes = self.connectionManager.get_connected_nodes()
+            nodes_online = len(set_of_connected_nodes)
+            if nodes_online > 0:
+                for websocket in iter(set_of_connected_nodes):
+                    state_values[str(client_dict[websocket].get_claver_id())] = client_dict[websocket].get_state_values()
+        msg = {"type": "state", "value": state_values}
+        return {"external_fulfillment": False, "state_values": msg, "header": None}
+
     async def close(self):
         """ Part of the closing sequence chain when terminating socket server """
         while True:
@@ -111,27 +138,11 @@ class Dashboard:
             else:
                 break
         # await self.queue.delete()
+        self.running = False
+        self.task_update_state_values.cancel()
         await self.connection.close()
         print("\tClosed Connection to Rabbit")
         await self.connection_db.delete_dashboard_session(self.id)
-        await self.connectionManager.get_state_manager().terminate_refresh_agent(self.push_refresh_type, self.agent, self.mode)
-
-    @staticmethod
-    def construct_state(connectionManager) -> dict:
-        """ Provides state information to the Claver Dashboard Web Portal """
-        state_values = {}
-        client_dict = connectionManager.get_client_dict()
-        set_of_connected_nodes = connectionManager.get_connected_nodes()
-        nodes_online = len(set_of_connected_nodes)
-        if nodes_online > 0:
-            for websocket in iter(set_of_connected_nodes):
-                state_values[str(client_dict[websocket].get_claver_id())] = client_dict[websocket].get_state_values()
-        msg = {"type": "state", "value": state_values}
-        return {"external_fulfillment": False, "state_values": msg, "header": None}
-
-    def get_static_state_construct_func(self):
-        """ Return a function reference to the static construct_state() """
-        return Dashboard().construct_state
 
 """
 Resources: awaiting class initialization (asyncio)

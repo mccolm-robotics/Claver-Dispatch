@@ -105,7 +105,7 @@ class Node:
         await self.mq_connector.bind_queue_to_exchange(queue=self.queue, exchange=self.mode)
         self.tag = await self.queue.consume(callback)
 
-    def construct_state(self, connectionManager) -> dict:
+    def construct_state(self) -> dict:
         # The state_values for a node will depend on the mode it has been set to.
         # Some modes will receive their state_values from the microservices assigned that specific mode
         # Task: Check the current mode to see if it will be assigned values from the Node object. Otherwise, send request out to events server with header.
