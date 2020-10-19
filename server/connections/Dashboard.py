@@ -102,9 +102,9 @@ class Dashboard:
             if "channel_type" in data:
                 if data["channel_type"] == "direct":
                     await self.incoming_message(data)
-            for header in message.headers:
-                content = json.loads(message.headers[header])
-                print(f"{header}: {content}")
+            # for header in message.headers:
+            #     content = json.loads(message.headers[header])
+            #     print(f"{header}: {content}")
             try:
                 await self.websocket.send(message.body.decode())
             except websockets.ConnectionClosed:

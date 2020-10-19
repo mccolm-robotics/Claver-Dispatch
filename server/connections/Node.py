@@ -57,18 +57,22 @@ class Node:
         return self
 
     def get_claver_id(self):
+        """ Returns the unique ID of this client's instance. """
         return self.claver_id
 
     def get_agent(self) -> str:
+        """ Returns the agent value supplied by the client in its authentication message. """
         return self.agent
 
     async def set_mode(self, mode: str):
+        """ Used to set the mode of a client when switching between microservices. """
         if mode != self.mode:
             await self.mq_connector.unbind_queue_from_events_exchange(self.queue, self.mode)
             self.mode = mode
             await self.mq_connector.bind_queue_to_exchange(self.queue, mode)
 
     async def calculate_ping(self):
+        """ Calculates the ping time for the server to connect with the client. """
         while self.running:
             host = self.websocket.remote_address[0]
             # try:
@@ -87,16 +91,32 @@ class Node:
             await asyncio.sleep(15)
 
     def get_header_id(self) -> dict:
+        """ This information is included in the header of a RabbitMQ message. This allows any running microservice to
+        respond directly to a client's request for information by using the ID included in the header. """
         return {"client": {"uuid": str(self.claver_id), "timestamp": time.time()}}
 
     async def on_message(self, message: IncomingMessage):
         """ Coroutine: Receives messages from RabbitMQ """
         async with message.process():
-            for header in message.headers:
-                content = json.loads(message.headers[header])
-                print(f"{header}: {content}")
+            data = json.loads(message.body.decode())
+            if "destination" in data:
+                if data["destination"] == "coupler":
+                    for message in data["message"]:
+                        if message["type"] == "directive":
+                            await self.process_directive(message)
+                elif data["destination"] == "client":
+                    await self.send_message_to_client(message.body.decode())
+            else:
+                await self.send_message_to_client(message.body.decode())
+
+    async def process_directive(self, directive):
+        if directive["value"] == "restart":
+            await self.send_message_to_client(json.dumps(directive))
+
+    async def send_message_to_client(self, message):
+        if self.running:
             try:
-                await self.websocket.send(message.body.decode())
+                await self.websocket.send(message)
             except websockets.ConnectionClosed:
                 await self.close()
                 await asyncio.gather(*asyncio.all_tasks())
@@ -112,6 +132,7 @@ class Node:
         self.tag = await self.queue.consume(callback)
 
     def construct_state(self) -> dict:
+        """ Called by the StateManager to gather state/display information for a client's interface. """
         # The state_values for a node will depend on the mode it has been set to.
         # Some modes will receive their state_values from the microservices assigned that specific mode
         # Task: Check the current mode to see if it will be assigned values from the Node object. Otherwise, send request out to events server with header.
@@ -119,6 +140,7 @@ class Node:
         return {"external_fulfillment": True, "state_values": msg, "header": self.get_header_id()}
 
     def get_state_values(self) -> dict:
+        """ Returns a dictionary of state values used by the webportal (dashboard module) """
         return {
             "name": "Test",
             "uptime": self.get_uptime(),
@@ -130,6 +152,7 @@ class Node:
         }
 
     def get_uptime(self):
+        """ Calculates the duration of client's connection to server """
         delta = time.time() - self.init_time  # returns seconds
         days = delta // 86400
         hours = delta // 3600 % 24
@@ -139,9 +162,18 @@ class Node:
         return output
 
     def get_version_string(self, ver):
+        """ Creates a string representation of dictionary-based version information """
         return ver["MAJOR"] + "." + ver["MINOR"] + "." + ver["PATCH"]
 
     async def close(self):
+        """ Called when the client disconnects from the server.
+
+        Jobs:
+            1. Closes down running tasks.
+            2. Closes the connection to RabbitMQ.
+            3. Updates device status in the DB.
+        """
+
         while True:
             if self.connection is None:
                 await asyncio.sleep(1)

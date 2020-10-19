@@ -23,6 +23,12 @@ class Router:
         if "channel_type" in data:
             if data["channel_type"] == "direct":
                 await self.connectionManager.get_client(websocket).incoming_message(json.loads(message))
+            elif data["channel_type"] == "deliver":
+                if "recipient" in data:
+                    if "destination" in data:
+                        recipient = data["recipient"]
+                        outgoing_message = json.dumps({"destination": data["destination"], "message": data["message"]})
+                        await self.messageBus.direct_message(outgoing_message, recipient)
         else:
             if "mode" in data:  # ToDo: This 'check and set' is duplicated in "authenticate_client" per client now. Remove from here
                 # Is this needed when a Claver board changes its mode?
@@ -35,12 +41,10 @@ class Router:
             and, if valid, the websocket is passed back initial state data appropriate to its mode value. """
         handshake_data = json.loads(message)    # ToDo: Perform regex to ensure JSON message is safe
         if "mode" in handshake_data:
-            print(handshake_data)
+            # print(handshake_data)
             if await self.connectionManager.authenticate_client(websocket, handshake_data):
                 await self.stateManager.get_initial_state(websocket)
                 return True
-            # elif handshake_data["mode"] == "handshake":
-            #     return await self.connectionManager.authorization_handshake(websocket, handshake_data)
             return False
         else:
             print("Router: Authenticating Client - Handshake data does not include 'mode'")
