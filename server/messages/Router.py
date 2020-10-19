@@ -22,7 +22,7 @@ class Router:
         # More sophisticated control over websocket communication
         if "channel_type" in data:
             if data["channel_type"] == "direct":
-                self.connectionManager.get_client(websocket).incoming_message(json.loads(message))
+                await self.connectionManager.get_client(websocket).incoming_message(json.loads(message))
         else:
             if "mode" in data:  # ToDo: This 'check and set' is duplicated in "authenticate_client" per client now. Remove from here
                 # Is this needed when a Claver board changes its mode?
@@ -30,7 +30,7 @@ class Router:
             # The incoming message is sent out for processing with information about the sender stored in the header variable
             await self.messageBus.add_to_events_queue(message, self.connectionManager.get_client(websocket).get_header_id())
 
-    async def authenticate_client(self, websocket, message) -> bool:
+    async def authenticate_client(self, websocket, message):
         """ Authorization step for new websocket connections. Handshake JSON string is parsed for authentication tokens
             and, if valid, the websocket is passed back initial state data appropriate to its mode value. """
         handshake_data = json.loads(message)    # ToDo: Perform regex to ensure JSON message is safe
@@ -39,8 +39,12 @@ class Router:
             if await self.connectionManager.authenticate_client(websocket, handshake_data):
                 await self.stateManager.get_initial_state(websocket)
                 return True
-            elif handshake_data["mode"] == "handshake":
-                await self.connectionManager.authorization_handshake(websocket, handshake_data)
+            # elif handshake_data["mode"] == "handshake":
+            #     return await self.connectionManager.authorization_handshake(websocket, handshake_data)
+            return False
         else:
             print("Router: Authenticating Client - Handshake data does not include 'mode'")
             return False
+
+    async def create_chain_of_trust(self, websocket):
+        await self.connectionManager.create_chain_of_trust(websocket)

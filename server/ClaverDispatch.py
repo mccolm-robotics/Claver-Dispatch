@@ -6,7 +6,8 @@ from server.connections.ConnectionManager import ConnectionManager
 from server.messages.Router import Router
 
 class BadCredentials(Exception):
-    pass
+    def __init__(self, ip_address):
+        self.ip_address = ip_address
 
 class ClaverDispatch:
     def __init__(self, host: str, port: int, server_key: str=None, server_crt: str=None, client_crt: str=None) -> None:
@@ -29,15 +30,15 @@ class ClaverDispatch:
         self.router = Router(self.connectionManager, self.event_loop)
 
     def run(self) -> None:
-        """Starts the server"""
-        server = self.event_loop.run_until_complete(self.start_server)
+        """Starts the server. Initiates the websocket connection. """
+        server = self.event_loop.run_until_complete(self.start_server)  # Specifies the connection coroutine
         try:
             print('Server: Started')
             self.event_loop.run_forever()
         except KeyboardInterrupt:
             pass
         finally:
-            self.event_loop.run_until_complete(self.connectionManager.cleanup())
+            self.event_loop.run_until_complete(self.connectionManager.cleanup())    # run_until_complete turns an async call into a blocking synchronous call
             server.close()
             self.event_loop.run_until_complete(server.wait_closed())
             print('Server: Disconnected')
@@ -56,19 +57,23 @@ class ClaverDispatch:
         try:
             print("Client Connected:")
             async for message in websocket:
-                if self.connectionManager.is_authorized_user(websocket):
+                if self.connectionManager.is_authorized_user(websocket):    # Has the connection been registered?
                     await self.router.ingest_events(websocket, message)
                 else:
                     if not await self.router.authenticate_client(websocket, message):
-                        raise BadCredentials
+                        # If this is created by a browser, then 1) server php portal misconfiguration or 2) exploit attempt. Kill connection without response. Log event in Rabbit Log.
+                        # If this is created by a node, check to see if the IP address is white-listed. If not, kill connection without response. Log event with IP address.
+                        # ---> If IP is white-listed, send response requesting handshake access code (Created by the web portal)
+                        if await self.connectionManager.is_ip_whitelisted(websocket.remote_address[0]):
+                            await self.router.create_chain_of_trust(websocket)
+                        else:
+                            raise BadCredentials(websocket.remote_address[0])
         except (websockets.ConnectionClosed):
             # Exception raised when websockets.open() == False
             # Connection is closed. Exit iterator.
             pass
-        except BadCredentials:
-            # Bad username or password. Close the websocket and don't send response
-            print("\tBad Credentials")
-            pass
+        except BadCredentials as e:
+            print(f"\tBad Credentials. IP not whitelisted. Adding attempt from {e.ip_address} to log.")
         finally:
             if self.connectionManager.is_authorized_user(websocket):
                 agent = self.connectionManager.get_client(websocket).get_agent()

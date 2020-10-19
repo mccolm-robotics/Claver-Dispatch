@@ -17,12 +17,13 @@ Need to implement message batching and need to implement an ACK system for readi
 
 class Node:
     def __init__(self):
+        self.id = None
+        self.connection_db = None
         self.claver_id = None
         self.init_time = None
         self.state = None
         self.agent = None
         self.task_ping = None
-        self.uuid = None
         self.event_loop = None
         self.amqp_url = "amqp://guest:guest@localhost/"
         self.websocket = None
@@ -42,10 +43,15 @@ class Node:
         self.agent = handshake_data["agent"]
         self.mode = handshake_data["mode"]
         self.state = handshake_data["state"]
-        self.claver_id = uuid.uuid4()
-        self.uuid = uuid.uuid4()
+        self.device_id = handshake_data["nid"]
+        device_data = await connection_db.get_node_device(self.device_id)
+        self.claver_id = device_data["uuid"]
+        self.node_id = device_data["node_id"]
+        self.device_name = device_data["device_name"]
+        self.platform = device_data["platform"]
+        self.id = device_data["id"]
         self.init_time = time.time()
-        # self.id, self.password = await connection_db.get_account("tester")
+        await connection_db.update_node_device_status(1, self.init_time, self.id)
         self.task_ping = event_loop.create_task(self.calculate_ping())
         await self.notifications(self.on_message)
         return self
@@ -81,7 +87,7 @@ class Node:
             await asyncio.sleep(15)
 
     def get_header_id(self) -> dict:
-        return {"client": {"uuid": str(self.uuid), "timestamp": time.time()}}
+        return {"client": {"uuid": str(self.claver_id), "timestamp": time.time()}}
 
     async def on_message(self, message: IncomingMessage):
         """ Coroutine: Receives messages from RabbitMQ """
@@ -100,7 +106,7 @@ class Node:
         self.connection = await connect(self.amqp_url, loop=self.event_loop)
         channel = await self.connection.channel()
         await channel.set_qos(prefetch_count=1)
-        self.queue = await channel.declare_queue(str(self.uuid), exclusive=True)
+        self.queue = await channel.declare_queue(str(self.claver_id), exclusive=True)
         await self.mq_connector.bind_queue_to_exchange(queue=self.queue, exchange="system")
         await self.mq_connector.bind_queue_to_exchange(queue=self.queue, exchange=self.mode)
         self.tag = await self.queue.consume(callback)
@@ -116,10 +122,11 @@ class Node:
         return {
             "name": "Test",
             "uptime": self.get_uptime(),
-            "launcher_ver": self.get_version_string(self.state["launcher_ver"]),
-            "board_ver": self.get_version_string(self.state["board_ver"]),
+            "launcher_ver": self.get_version_string(self.state["launcher_ver"]) if self.state["launcher_ver"] else "Missing",
+            "board_ver": self.get_version_string(self.state["board_ver"]) if self.state["board_ver"] else "Missing",
             "ping": self.ping,
-            "branch": self.state["branch"]
+            "launcher_branch": self.state["launcher_branch"],
+            "board_branch": self.state["board_branch"]
         }
 
     def get_uptime(self):
@@ -146,6 +153,7 @@ class Node:
         self.running = False
         self.task_ping.cancel()
         print("\tClosed Connection to Rabbit")
+        await self.connection_db.update_node_device_status(0, self.init_time, self.id)
 
 
 """

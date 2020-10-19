@@ -1,5 +1,6 @@
 import asyncio
 import json
+import uuid
 from datetime import time
 
 import cryptography
@@ -10,6 +11,7 @@ from server.connections.Node import Node
 from server.connections.Dashboard import Dashboard
 from server.connections.ConnectionDB import ConnectionDB
 from server.connections.MQConnector import MQConnector
+import time
 
 
 class ConnectionManager:
@@ -20,7 +22,7 @@ class ConnectionManager:
         self.messageBus = None
         self.connected_clients = set()  # Unique list (set) of current websockets. This facilitates a quick lookup when confirming a connection's authentication status
         self.connected_nodes = set()
-        self.connected_dashboards = {}  # This dictionary groups websocket connections with agent == dashboard by mode. Currently only used in StateManager()
+        self.connected_dashboard_modes = {}  # This dictionary tracks the number of connected dashboards. Dictionary is keyed by dashboard mode values.
         self.client_dict = {}  # Dictionary of user objects. Each websocket object is the key value that identifies its object instance (defined by the 'agent' value in handshake data)
 
     @classmethod
@@ -50,9 +52,9 @@ class ConnectionManager:
         """ Returns set of connected node objects """
         return self.connected_nodes
 
-    def get_connected_dashboards(self) -> dict:
-        """ Returns dict of connected dashboard objects """
-        return self.connected_dashboards
+    def get_connected_dashboard_modes(self) -> dict:
+        """ Returns dict of connected dashboard modes """
+        return self.connected_dashboard_modes
 
     def get_client_count(self) -> int:
         """ Returns count of all websocket connections """
@@ -66,6 +68,38 @@ class ConnectionManager:
         """ Boolean check for websocket in set of connected websockets """
         return websocket in self.connected_clients
 
+    async def is_ip_whitelisted(self, ip_address):
+        if await self.connection_db.get_id_of_whitelisted_ip(ip_address):
+            return True
+        else:
+            return False
+
+    async def create_chain_of_trust(self, websocket):
+        request = {"request": "access_code"}
+        await websocket.send(json.dumps(request))
+        result = await websocket.recv()
+        handshake_data = json.loads(result)
+        if "mode" in handshake_data and "agent" in handshake_data:
+            if handshake_data["agent"] == "node" and handshake_data["mode"] == "handshake":
+                device_id = handshake_data["nid"]
+                access_code = handshake_data["access_code"]
+                invitation_data = await self.connection_db.get_device_invitation(device_id)
+                if type(invitation_data) is dict:
+                    if invitation_data["access_code"] == access_code and invitation_data["is_valid"] > 0:
+                        if invitation_data['expires'] > time.time():
+                            print(f"Invitation accepted by device {device_id}")
+                            secret_key = pyotp.random_base32(32)
+                            public_key = Fernet.generate_key()  # Rotate the public key
+                            seed = Fernet(public_key).encrypt(secret_key.encode())
+                            claver_id = uuid.uuid4()
+                            # Have we checked to make sure the device doesn't already exist in the DB?
+                            await self.connection_db.add_new_device(invitation_data["node_id"], str(claver_id), device_id, handshake_data["device_name"], seed.decode(), handshake_data["platform"], 1, int(time.time()))
+                            await websocket.send(json.dumps({"secret_key": secret_key, "public_key": public_key.decode()}))
+                            await self.connection_db.remove_device_invitation(invitation_data["id"])
+                        else:
+                            print("Invitation expired. Removing.")
+                            await self.connection_db.remove_device_invitation(invitation_data["id"])
+
     async def attach_node(self, websocket: websockets, handshake_data):
         """ Adds websocket to records of connected websockets. Adds websocket to set of connected Nodes. """
         self.connected_clients.add(websocket)
@@ -76,9 +110,10 @@ class ConnectionManager:
         """ Adds websocket to dynamic dictionary of client sets. Dictionary is keyed to 'mode' value sent during websocket handshake. """
         self.connected_clients.add(websocket)
         # self.connected_dashboards.add(websocket)
-        if handshake_data["mode"].lower() not in self.connected_dashboards:
-            self.connected_dashboards[handshake_data["mode"].lower()] = set()
-        self.connected_dashboards[handshake_data["mode"].lower()].add(websocket)
+        if handshake_data["mode"].lower() not in self.connected_dashboard_modes:    # Track the number of dashboards of this type (mode) connected
+            self.connected_dashboard_modes[handshake_data["mode"].lower()] = 1
+        else:
+            self.connected_dashboard_modes[handshake_data["mode"].lower()] += 1
         self.client_dict[websocket] = await Dashboard.initialize(self.event_loop, websocket, session_data, handshake_data, self.mq_connector, self.connection_db, self)
 
     async def detach_client(self, websocket: websockets):
@@ -86,20 +121,12 @@ class ConnectionManager:
         await self.client_dict[websocket].close()
         if websocket in self.connected_nodes:
             self.connected_nodes.remove(websocket)
-        elif self.client_dict[websocket].get_mode() in self.connected_dashboards:
-            # print(f"Detach Client: found websocket mode as key in dashboard dict")
-            if websocket in self.connected_dashboards[self.client_dict[websocket].get_mode()]:
-                # print(f"Detach Client: Found websocket in set of connected devices for mode {self.client_dict[websocket].get_mode()}")
-                self.connected_dashboards[self.client_dict[websocket].get_mode()].remove(websocket)
-                if len(self.connected_dashboards[self.client_dict[websocket].get_mode()]) == 0:
-                    # print("Detach Client: Removing empty set from dictionary")
-                    self.connected_dashboards.pop(self.client_dict[websocket].get_mode())
-                    # print(f"Current dict of connected dashboards: {self.connected_dashboards}")
+        elif self.client_dict[websocket].get_mode() in self.connected_dashboard_modes:
+            self.connected_dashboard_modes[self.client_dict[websocket].get_mode().lower()] -= 1
+            if self.connected_dashboard_modes[self.client_dict[websocket].get_mode().lower()] == 0:
+                self.connected_dashboard_modes.pop(self.client_dict[websocket].get_mode().lower())
         self.client_dict.pop(websocket)
         self.connected_clients.remove(websocket)
-
-    async def authorization_handshake(self, websocket: websockets, data: dict):
-        await websocket.send(data)
 
     async def authenticate_client(self, websocket: websockets, handshake_data: dict) -> bool:
         """ Parses the JSON values sent from client during authentication handshake """
@@ -120,12 +147,14 @@ class ConnectionManager:
                              print("Error: Session already filled")
                     else:
                         print("Error: Unable to read session table values")
-            elif handshake_data["agent"] == "node":
+            elif handshake_data["agent"].lower() == "node":
                 if "token" in handshake_data and "nid" in handshake_data and "qdot" in handshake_data:
-                    # secret_key = pyotp.random_base32(32)
 
                     public_key = handshake_data["qdot"]
                     encrypted_key = await self.connection_db.get_node_seed(handshake_data["nid"])
+                    if not encrypted_key:
+                        print("Device has not been registered!")
+                        return False
                     try:
                         secret_key = Fernet(public_key).decrypt(encrypted_key.encode())
                     except (cryptography.fernet.InvalidToken, TypeError):

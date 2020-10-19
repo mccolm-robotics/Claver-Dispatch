@@ -18,8 +18,11 @@ class DBConnection:
                                           user=self.user, password=self.password,
                                           db=self.database, loop=self.event_loop)
         async with conn.cursor(aiomysql.DictCursor) as cur:
-            await cur.execute(query, args)
-            result = await cur.fetchall()
+            try:
+                await cur.execute(query, args)
+                result = await cur.fetchall()
+            except Exception as e:
+                result = False
             conn.close()
             return result
 
@@ -29,9 +32,15 @@ class DBConnection:
                                       user=self.user, password=self.password,
                                       db=self.database, loop=self.event_loop)
         async with conn.cursor(aiomysql.DictCursor) as cur:
-            await cur.execute(query, args)
-            await conn.commit()
+            try:
+                await cur.execute(query, args)
+                await conn.commit()
+                status = True
+            except Exception as e:
+                # print(e)
+                status = False
             conn.close()
+            return status
 
 
 """

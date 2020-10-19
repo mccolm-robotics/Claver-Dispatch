@@ -54,11 +54,14 @@ class Dashboard:
         self.task_update_state_values = event_loop.create_task(self.update_state_values())
         return self
 
-    def incoming_message(self, data: dict):
+    async def incoming_message(self, data: dict):
         if "action" in data:
             if "update" in data["action"]:
-                if "setting" in data["action"]["update"]:
+                update = data["action"]
+                if "setting" in update["update"]:
                     self.update_settings(data["action"]["update"]["setting"])
+                elif "display" in update["update"]:
+                    await self.update_dashboard_display()
 
     def update_settings(self, data):
         if "refresh_interval" in data:
@@ -66,9 +69,12 @@ class Dashboard:
 
     async def update_state_values(self):
         while self.running:
-            state_values = self.construct_state()["state_values"]
-            await self.websocket.send(json.dumps(state_values))
+            await self.update_dashboard_display()
             await asyncio.sleep(self.refresh_interval)
+
+    async def update_dashboard_display(self):
+        state_values = self.construct_state()["state_values"]
+        await self.websocket.send(json.dumps(state_values))
 
     def get_agent(self) -> str:
         return self.agent
@@ -92,6 +98,10 @@ class Dashboard:
     async def on_message(self, message: IncomingMessage):
         """ Coroutine: receives messages sent to this object instance by RabbitMQ """
         with message.process():
+            data = json.loads(message.body.decode())
+            if "channel_type" in data:
+                if data["channel_type"] == "direct":
+                    await self.incoming_message(data)
             for header in message.headers:
                 content = json.loads(message.headers[header])
                 print(f"{header}: {content}")
