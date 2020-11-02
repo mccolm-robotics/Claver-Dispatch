@@ -1,8 +1,6 @@
 import asyncio
 import json
 
-from server.messages.StateSentinel import StateSentinel
-
 
 class StateManager:
     def __init__(self, connectionManager, messageBus, event_loop):
@@ -12,7 +10,7 @@ class StateManager:
 
     async def broadcast_connected_users_list(self) -> None:
         # This needs to be reworked into something more useful
-        count = {"type": "users", "count": self.connectionManager.get_client_count()}
+        count = {"type": "state", "value": "users", "count": self.connectionManager.get_client_count()}
         await self.messageBus.broadcast_message(json.dumps(count))
 
     async def send_state_values_to_client(self, websocket):
@@ -28,7 +26,7 @@ class StateManager:
         """ Adds request to the Rabbit message queue for each dashboard mode to update state values """
         active_dashboards = self.connectionManager.get_connected_dashboard_modes()
         for dashboard_type in active_dashboards:
-            message = {"channel_type": 'direct', "action": {"update": {"display": "state_values"}}}
+            message = {"channel_type": 'direct', "endpoint": "coupler", "message": [{"type": "display", "value": {"reload": "state_values"}}]}
             await self.messageBus.broadcast_event_update_by_key(json.dumps(message), dashboard_type)
 
     async def get_initial_state(self, websocket):

@@ -65,7 +65,11 @@ class ClaverDispatch:
                         # If this is created by a node, check to see if the IP address is white-listed. If not, kill connection without response. Log event with IP address.
                         # ---> If IP is white-listed, send response requesting handshake access code (Created by the web portal)
                         if await self.connectionManager.is_ip_whitelisted(websocket.remote_address[0]):
-                            await self.router.create_chain_of_trust(websocket)
+                            if not await self.router.create_chain_of_trust(websocket):
+                                print("\tBad trust-chain handshake. Disconnecting.")
+                                raise BadCredentials(websocket.remote_address[0])
+                            else:
+                                print("Chain established")
                         else:
                             raise BadCredentials(websocket.remote_address[0])
         except (websockets.ConnectionClosed):
@@ -73,7 +77,7 @@ class ClaverDispatch:
             # Connection is closed. Exit iterator.
             pass
         except BadCredentials as e:
-            print(f"\tBad Credentials. IP not whitelisted. Adding attempt from {e.ip_address} to log.")
+            print(f"\tBad Credentials. Adding attempt from {e.ip_address} to log.")
         finally:
             if self.connectionManager.is_authorized_user(websocket):
                 agent = self.connectionManager.get_client(websocket).get_agent()
@@ -84,7 +88,7 @@ class ClaverDispatch:
             print("Client Disconnected")
 
 if __name__ == "__main__":
-    ClaverDispatch("localhost", 6789)
+    ClaverDispatch("192.168.1.17", 6789)
 
 
 

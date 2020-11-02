@@ -72,13 +72,16 @@ class ConnectionManager:
         if await self.connection_db.get_id_of_whitelisted_ip(ip_address):
             return True
         else:
+            print(f"{ip_address} not whitelisted. Ignoring.")
             return False
 
     async def create_chain_of_trust(self, websocket):
-        request = {"request": "access_code"}
+        print("Establishing Chain Of Trust")
+        request = {"type": "request", "value": "access_code"}
         await websocket.send(json.dumps(request))
         result = await websocket.recv()
         handshake_data = json.loads(result)
+        print(f"Received handshake data from client node: {handshake_data}")
         if "mode" in handshake_data and "agent" in handshake_data:
             if handshake_data["agent"] == "node" and handshake_data["mode"] == "handshake":
                 device_id = handshake_data["nid"]
@@ -86,6 +89,7 @@ class ConnectionManager:
                 invitation_data = await self.connection_db.get_device_invitation(device_id)
                 if type(invitation_data) is dict:
                     if invitation_data["access_code"] == access_code and invitation_data["is_valid"] > 0:
+                        print("Access code is valid.")
                         if invitation_data['expires'] > time.time():
                             print(f"Invitation accepted by device {device_id}")
                             secret_key = pyotp.random_base32(32)
@@ -96,9 +100,11 @@ class ConnectionManager:
                             await self.connection_db.add_new_device(invitation_data["node_id"], str(claver_id), device_id, handshake_data["device_name"], seed.decode(), handshake_data["platform"], 1, int(time.time()))
                             await websocket.send(json.dumps({"secret_key": secret_key, "public_key": public_key.decode()}))
                             await self.connection_db.remove_device_invitation(invitation_data["id"])
+                            return True
                         else:
                             print("Invitation expired. Removing.")
                             await self.connection_db.remove_device_invitation(invitation_data["id"])
+                return False
 
     async def attach_node(self, websocket: websockets, handshake_data):
         """ Adds websocket to records of connected websockets. Adds websocket to set of connected Nodes. """
@@ -129,6 +135,7 @@ class ConnectionManager:
         self.connected_clients.remove(websocket)
 
     async def authenticate_client(self, websocket: websockets, handshake_data: dict) -> bool:
+        print(f"Authenticating Client. Handshake data: {handshake_data}")
         """ Parses the JSON values sent from client during authentication handshake """
         if "agent" in handshake_data:
             if handshake_data["agent"].lower() == "dashboard":
@@ -153,7 +160,7 @@ class ConnectionManager:
                     public_key = handshake_data["qdot"]
                     encrypted_key = await self.connection_db.get_node_seed(handshake_data["nid"])
                     if not encrypted_key:
-                        print("Device has not been registered!")
+                        print("Authentication failed. Device has not been registered!")
                         return False
                     try:
                         secret_key = Fernet(public_key).decrypt(encrypted_key.encode())

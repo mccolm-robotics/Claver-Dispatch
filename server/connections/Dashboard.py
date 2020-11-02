@@ -54,63 +54,85 @@ class Dashboard:
         self.task_update_state_values = event_loop.create_task(self.update_state_values())
         return self
 
-    async def incoming_message(self, data: dict):
-        if "action" in data:
-            if "update" in data["action"]:
-                update = data["action"]
-                if "setting" in update["update"]:
-                    self.update_settings(data["action"]["update"]["setting"])
-                elif "display" in update["update"]:
-                    await self.update_dashboard_display()
-
-    def update_settings(self, data):
-        if "refresh_interval" in data:
-            self.refresh_interval = int(data["refresh_interval"])
-
     async def update_state_values(self):
+        """ Asyncio task. Updates the state values displayed by dashboard every <refresh_interval> seconds. """
         while self.running:
             await self.update_dashboard_display()
             await asyncio.sleep(self.refresh_interval)
 
     async def update_dashboard_display(self):
+        """ Gathers dashboard display values and sends to browser endpoint. """
         state_values = self.construct_state()["state_values"]
         await self.websocket.send(json.dumps(state_values))
 
     def get_agent(self) -> str:
+        """ Returns the 'agent' value for this data coupler. """
         return self.agent
 
     def get_state(self):
+        """ Deprecated function. Remove call from white_board microservice. """
         return self.state
 
     def get_uuid(self):
+        """ Returns the uuid value assigned to this data coupler. Used by RabbitMQ to direct message endpoints. """
         return self.uuid
 
     def set_mode(self, mode: str):
+        """ Possibly redundant function. """
         self.mode = mode
 
     def get_mode(self):
+        """ Returns the 'mode' value for this data coupler. """
         return self.mode
 
     def get_header_id(self) -> dict:
         """ Used by messages sent to the RabbitMQ Event Processor module """
         return {"client": {"uuid": self.uuid, "timestamp": time.time(), "mode": self.mode}}
 
+    async def process_setting(self, setting):
+        """ Processes messages requesting settings updates """
+        if type(setting["value"]) is dict:
+            if "refresh_interval" in setting["value"]:
+                self.refresh_interval = int(setting["value"]["refresh_interval"])
+
+    async def process_display(self, setting):
+        """ Processes messages requesting display updates """
+        if type(setting["value"]) is dict:
+            if "reload" in setting["value"]:
+                if setting["value"]["reload"] == "state_values":
+                    await self.update_dashboard_display()
+
+    async def incoming_message(self, message: str):
+        """ Parses incoming messages and distributes components for processing. Called from Router and from RabbitMQ Coroutine. """
+        data = json.loads(message)
+        if "endpoint" in data:
+            if data["endpoint"] == "coupler":
+                for message in data["message"]:
+                    if message["type"] == "setting":
+                        await self.process_setting(message)
+                    elif message["type"] == "display":
+                        await self.process_display(message)
+            elif data["endpoint"] == "client":
+                await self.send_message_to_client(message)
+        else:
+            await self.send_message_to_client(message)
+
     async def on_message(self, message: IncomingMessage):
         """ Coroutine: receives messages sent to this object instance by RabbitMQ """
         with message.process():
-            data = json.loads(message.body.decode())
-            if "channel_type" in data:
-                if data["channel_type"] == "direct":
-                    await self.incoming_message(data)
-            # for header in message.headers:
-            #     content = json.loads(message.headers[header])
-            #     print(f"{header}: {content}")
-            try:
-                await self.websocket.send(message.body.decode())
-            except websockets.ConnectionClosed:
-                await self.queue.delete()
-                await self.close()
-                await asyncio.gather(*asyncio.all_tasks())
+            await self.incoming_message(message.body.decode())
+
+    async def send_message_to_client(self, message):
+        """ Transmits message to connected browser endpoint. """
+        # for header in message.headers:
+        #     content = json.loads(message.headers[header])
+        #     print(f"{header}: {content}")
+        try:
+            await self.websocket.send(message)
+        except websockets.ConnectionClosed:
+            await self.queue.delete()
+            await self.close()
+            await asyncio.gather(*asyncio.all_tasks())
 
     async def notifications(self, callback):
         """
@@ -138,6 +160,7 @@ class Dashboard:
                 for websocket in iter(set_of_connected_nodes):
                     state_values[str(client_dict[websocket].get_claver_id())] = client_dict[websocket].get_state_values()
         msg = {"type": "state", "value": state_values}
+        print(f"Modified how user totals are sent. \n Message now sent to dashboard: {msg}")
         return {"external_fulfillment": False, "state_values": msg, "header": None}
 
     async def close(self):

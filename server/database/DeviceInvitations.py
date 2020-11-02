@@ -7,6 +7,7 @@ class DeviceInvitations:
         vals = (device_id,)
         result = await self.db_connection.query_fetch_returns_dict(query=stmt, args=vals)
         if type(result) is dict:
+            print(f"Got device invitation data: {result}")
             return result[0]
         else:
             return result

@@ -22,12 +22,12 @@ class Router:
         # More sophisticated control over websocket communication
         if "channel_type" in data:
             if data["channel_type"] == "direct":
-                await self.connectionManager.get_client(websocket).incoming_message(json.loads(message))
+                await self.connectionManager.get_client(websocket).incoming_message(message)
             elif data["channel_type"] == "deliver":
                 if "recipient" in data:
-                    if "destination" in data:
+                    if "endpoint" in data:
                         recipient = data["recipient"]
-                        outgoing_message = json.dumps({"destination": data["destination"], "message": data["message"]})
+                        outgoing_message = json.dumps({"endpoint": data["endpoint"], "message": data["message"]})
                         await self.messageBus.direct_message(outgoing_message, recipient)
         else:
             if "mode" in data:  # ToDo: This 'check and set' is duplicated in "authenticate_client" per client now. Remove from here
@@ -51,4 +51,4 @@ class Router:
             return False
 
     async def create_chain_of_trust(self, websocket):
-        await self.connectionManager.create_chain_of_trust(websocket)
+        return await self.connectionManager.create_chain_of_trust(websocket)

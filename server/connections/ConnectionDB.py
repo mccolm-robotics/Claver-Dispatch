@@ -37,6 +37,7 @@ class ConnectionDB:
         """ Gets assoc array of values from device_invitations table """
         result = await self.device_invitations.get_device_invitation(device_id)
         if not result:
+            print(f"No device invitation found for {device_id}")
             return result
         else:
             return result[0]

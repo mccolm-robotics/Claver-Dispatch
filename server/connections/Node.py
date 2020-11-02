@@ -99,12 +99,12 @@ class Node:
         """ Coroutine: Receives messages from RabbitMQ """
         async with message.process():
             data = json.loads(message.body.decode())
-            if "destination" in data:
-                if data["destination"] == "coupler":
+            if "endpoint" in data:
+                if data["endpoint"] == "coupler":
                     for message in data["message"]:
                         if message["type"] == "directive":
                             await self.process_directive(message)
-                elif data["destination"] == "client":
+                elif data["endpoint"] == "client":
                     await self.send_message_to_client(message.body.decode())
             else:
                 await self.send_message_to_client(message.body.decode())

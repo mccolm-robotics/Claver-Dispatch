@@ -5,7 +5,7 @@ class WhiteBoard:
     STATE = {"value": 0}
 
     def state_event(self) -> dict:
-        return {"type": "state", **self.STATE}
+        return {"type": "whiteboard", **self.STATE}
 
     def process_event(self, data: dict) -> dict:
         if "action" in data:
