@@ -159,8 +159,7 @@ class Dashboard:
             if nodes_online > 0:
                 for websocket in iter(set_of_connected_nodes):
                     state_values[str(client_dict[websocket].get_claver_id())] = client_dict[websocket].get_state_values()
-        msg = {"type": "state", "value": state_values}
-        print(f"Modified how user totals are sent. \n Message now sent to dashboard: {msg}")
+        msg = {"type": "state", "property": "active_boards", "values": state_values}
         return {"external_fulfillment": False, "state_values": msg, "header": None}
 
     async def close(self):

@@ -88,7 +88,7 @@ class ClaverDispatch:
             print("Client Disconnected")
 
 if __name__ == "__main__":
-    ClaverDispatch("192.168.1.17", 6789)
+    ClaverDispatch("192.168.1.25", 6789)
 
 
 

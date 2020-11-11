@@ -12,7 +12,7 @@ class ClientConnection:
         if use_ssl:
             self.ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile="server.crt")
             self.ssl_context.load_cert_chain(certfile="client.crt", keyfile="client.key")
-        self.uri = "ws://localhost:6789"
+        self.uri = "ws://192.168.1.25:6789"
         self.main()
 
     def __getSecretKey(self):

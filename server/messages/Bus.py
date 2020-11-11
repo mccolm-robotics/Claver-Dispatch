@@ -10,6 +10,7 @@ class Bus:
         self.connectionManager = connectionManager
 
     async def broadcast_message(self, message: str) -> None:
+        """ Sends a message to all queues bound to the system exchange. """
         connection = await connect(self.amqp_url, loop=self.loop)
         channel = await connection.channel()
         system_exchange = await channel.declare_exchange("claver.system", ExchangeType.FANOUT, auto_delete=False, durable=True)
@@ -25,6 +26,7 @@ class Bus:
         await connection.close()
 
     async def direct_message(self, message: str, recipient: str) -> None:
+        """ Sends a direct message to a single queue with name set to <recipient>. Recipient name will be a UUID. """
         connection = await connect(self.amqp_url, loop=self.loop)
         channel = await connection.channel()
         message_body = Message(
@@ -38,6 +40,7 @@ class Bus:
         await connection.close()
 
     async def broadcast_event_update_by_key(self, message: str, key: str) -> None:
+        """ Sends a message to all queues bound to the claver.events channel with routing key set to <key>. """
         connection = await connect(self.amqp_url, loop=self.loop)
         channel = await connection.channel()
         events_exchange = await channel.declare_exchange("claver.events", auto_delete=False, durable=True)

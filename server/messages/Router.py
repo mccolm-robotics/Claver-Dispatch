@@ -28,7 +28,7 @@ class Router:
                     if "endpoint" in data:
                         recipient = data["recipient"]
                         outgoing_message = json.dumps({"endpoint": data["endpoint"], "message": data["message"]})
-                        await self.messageBus.direct_message(outgoing_message, recipient)
+                        await self.messageBus.direct_message(message=outgoing_message, recipient=recipient)
         else:
             if "mode" in data:  # ToDo: This 'check and set' is duplicated in "authenticate_client" per client now. Remove from here
                 # Is this needed when a Claver board changes its mode?
